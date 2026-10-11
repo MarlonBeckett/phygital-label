@@ -53,7 +53,9 @@ owner does not code: explain steps in plain language.
   static files with their own strict CSP in `_headers`), private in `files/`
   (never deployed; read through `/api/file/…`). HTML/SVG/JS-like types are
   private-only and always download. Max 10 MB (Worker memory).
-- `public/assets/page.js` – the public pages' script (YouTube, editable notes).
+- `public/assets/page.js` – the public pages' script (YouTube, editable notes,
+  file stack viewer and visitor uploads). `public/assets/stack.js` – swiping
+  through a file stack (‹ ›, count, Download); also loaded by the editor preview.
 
 ## Text style
 A tag's `font` is `"label"`, `"regular"`, or absent (= the site default from

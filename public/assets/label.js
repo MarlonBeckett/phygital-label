@@ -300,6 +300,7 @@ function letters(label, c, extraHtml = '') {
 const MENU_ICON = (fg) => `<svg class="lt-menu-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="${fg}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>`;
 
 const PLAY_ICON = '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z" fill="#161616"/></svg>';
+const ARROW_ICON = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
 
 // A tape strip that opens `href` (a strip with no href shows as "coming soon").
 function linkStrip(label, href, color, key) {
@@ -392,25 +393,38 @@ function blockHtml(b, i, ctx) {
   }
 
   if (b.type === 'files') {
-    // A file stack: a list of files (photos as thumbnails) that visitors can
-    // open, and add to when the owner switched on "Anyone can upload".
+    // A file stack: the files side by side, one at a time, to swipe through
+    // (stack.js adds the ‹ › buttons, the "2 / 5" count and keeps Download on
+    // the file in view). The owner can switch on Download and "Anyone can
+    // upload" (Add a file) separately.
     const refs = (Array.isArray(b.files) ? b.files : []).filter((r) => isFileRef(r) && !ctx.missingFiles.has(r));
-    const where = `data-stack-tag="${esc(ctx.tagSlug)}" data-stack-page="${esc(ctx.pageSlug)}" data-stack-block="${i}"`;
-    const items = refs.map((ref) => {
+    const where = `data-stack-tag="${esc(ctx.tagSlug)}" data-stack-page="${esc(ctx.pageSlug)}" data-stack-block="${i}"${b.downloads ? ' data-downloads' : ''}`;
+    const items = refs.map((ref, n) => {
       const name = ref.split('/')[1];
       const kind = fileKind(name);
       const href = ctx.fileUrl(ref);
+      const ext = esc(fileExtension(name).toUpperCase() || 'FILE');
       const thumb = kind === 'image'
-        ? `<img src="${esc(href)}" alt="" loading="lazy" decoding="async">`
-        : `<span class="lt-file-type">${esc(fileExtension(name).toUpperCase() || 'FILE')}</span>`;
+        ? `<img src="${esc(href)}" alt="" loading="${n ? 'lazy' : 'eager'}" decoding="async">`
+        : `<span class="lt-file-type">${kind === 'video' || kind === 'audio' ? `<span class="lt-file-play">${PLAY_ICON}</span>` : ''}${ext}</span>`;
       return `<li><a class="lt-file-card" href="${esc(href)}" data-kind="${kind}" data-name="${esc(name)}">${thumb}<span class="lt-file-label">${esc(name)}</span></a></li>`;
     }).join('');
     const empty = refs.length ? '' : `<p class="lt-stack-empty">No files yet.</p>`;
+    const nav = `<div class="lt-stack-nav"${refs.length > 1 ? '' : ' hidden'}>` +
+      `<button type="button" class="lt-stack-prev" aria-label="Previous file" disabled>${ARROW_ICON}</button>` +
+      `<span class="lt-stack-count" aria-live="polite">1 / ${refs.length}</span>` +
+      `<button type="button" class="lt-stack-next" aria-label="Next file">${ARROW_ICON}</button></div>`;
+    const first = refs[0] ? refs[0].split('/')[1] : '';
+    const download = !b.downloads ? ''
+      : `<a class="lt-edit-btn lt-download-btn" href="${first ? esc(ctx.fileUrl(refs[0])) : '#'}" download="${esc(first)}"${first ? '' : ' hidden'}>Download</a>`;
     const add = !b.uploads ? '' : ctx.visitorEdit
-      ? '<div class="lt-edit-row"><span class="lt-edit-badge">Anyone can upload</span><label class="lt-edit-btn lt-upload-btn">Add a file<input type="file" class="lt-upload-input" data-stack-upload></label></div>'
-      : '<div class="lt-edit-row"><span class="lt-edit-badge">Anyone can upload</span></div>';
+      ? '<label class="lt-edit-btn lt-upload-btn">Add a file<input type="file" class="lt-upload-input" data-stack-upload></label>'
+      : '';
+    const badge = b.uploads ? '<span class="lt-edit-badge">Anyone can upload</span>' : '';
+    const actions = badge || download || add ? `<div class="lt-edit-row">${badge}${download}${add}</div>` : '';
     const caption = b.label ? `<p class="lt-caption">${esc(b.label)}</p>` : '';
-    return `<section class="lt-files" ${where} aria-label="${esc(b.label || 'Files')}">${caption}<ul class="lt-file-stack">${items}</ul>${empty}${add}</section>`;
+    return `<section class="lt-files" ${where} aria-label="${esc(b.label || 'Files')}">${caption}` +
+      `<ul class="lt-file-stack${refs.length > 1 ? ' lt-many' : ''}" tabindex="0" aria-label="${esc(b.label || 'Files')}: swipe for more">${items}</ul>${empty}${nav}${actions}</section>`;
   }
 
   if (b.type === 'file') {
@@ -544,6 +558,7 @@ export function validateTag(input) {
         if (list.length > LIMITS.stack) fail(`${where}: a file stack can have at most ${LIMITS.stack} files.`);
         out.files = [...new Set(list.filter(isFileRef))].slice(0, LIMITS.stack);
         if (b.uploads === true) out.uploads = true;
+        if (b.downloads === true) out.downloads = true;
       }
       if (type === 'link' || type === 'menu' || type === 'heading' || type === 'file') {
         const c = normColor(b.color);

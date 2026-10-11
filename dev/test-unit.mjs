@@ -90,6 +90,24 @@ ok(!canBePublic('a.html') && !canBePublic('a.svg') && !canBePublic('a.rss') && !
   ok(!renderPageHtml(off, off.pages[0], { tagSlug: 'r1', visitorEdit: true }).includes('data-stack-upload'), 'no upload button when uploads are off');
   const gone = renderPageHtml(v.tag, v.tag.pages[0], { missingFiles: new Set(['abcdefghijklmnop/a.jpg']) });
   ok(!gone.includes('a.jpg') && gone.includes('b.pdf'), 'deleted or private files drop out of the stack');
+  // Download and uploads are separate switches; several files swipe.
+  ok(!live.includes('lt-download-btn') && !live.includes('data-downloads'), 'no Download button unless switched on');
+  const dl = validateTag(tag({ ...stack, uploads: false, downloads: true })).tag;
+  ok(dl.pages[0].blocks[0].downloads === true && !dl.pages[0].blocks[0].uploads, 'downloads saved on its own');
+  const dlHtml = renderPageHtml(dl, dl.pages[0], { tagSlug: 'r1', visitorEdit: true });
+  ok(dlHtml.includes('class="lt-edit-btn lt-download-btn" href="/files/abcdefghijklmnop/a.jpg" download="a.jpg"') && dlHtml.includes('data-downloads'), 'Download points at the first file');
+  ok(!dlHtml.includes('data-stack-upload') && !dlHtml.includes('Anyone can upload'), 'Download without uploads');
+  ok(!validateTag(tag({ ...stack, downloads: 'yes' })).tag.pages[0].blocks[0].downloads, 'downloads must be true, not just truthy');
+  ok(live.includes('lt-file-stack lt-many') && live.includes('1 / 2') && !/lt-stack-nav"[^>]*hidden/.test(live), 'several files: swipe arrows and count');
+  const one = validateTag(tag({ type: 'files', files: ['abcdefghijklmnop/a.jpg'], downloads: true })).tag;
+  const oneHtml = renderPageHtml(one, one.pages[0], {});
+  ok(oneHtml.includes('class="lt-stack-nav" hidden') && !oneHtml.includes('lt-many'), 'one file: no arrows');
+  const none = validateTag(tag({ type: 'files', files: [], downloads: true })).tag;
+  ok(/lt-download-btn"[^>]*hidden/.test(renderPageHtml(none, none.pages[0], {})), 'empty stack hides Download');
+  const vid = validateTag(tag({ type: 'files', files: ['abcdefghijklmnop/clip.mp4', 'abcdefghijklmnop/<x>.pdf'] }));
+  ok(!vid.ok || !renderPageHtml(vid.tag, vid.tag.pages[0], {}).includes('<x>'), 'file names stay escaped');
+  const mp4 = validateTag(tag({ type: 'files', files: ['abcdefghijklmnop/clip.mp4'] })).tag;
+  ok(renderPageHtml(mp4, mp4.pages[0], {}).includes('lt-file-play'), 'video tiles show a play icon');
 }
 
 // --- notes anyone can edit

@@ -140,67 +140,142 @@ document.addEventListener('click', function (e) {
   if (note) openEditor(note);
 });
 
-// File stacks: tap a photo, video or audio file to view it here; other files
-// (PDFs and so on) open in the phone's own viewer. If the owner switched on
-// "Anyone can upload", Add a file puts a new file in the stack.
+// File stacks: tap a photo, video or audio file to view it here, and swipe
+// (or ‹ ›) to the stack's other photos and media; other files (PDFs and so
+// on) open in the phone's own viewer. Swiping the stack itself is stack.js.
+// If the owner switched on "Anyone can upload", Add a file puts a new file in
+// the stack; with Download on, the viewer has a Download button too.
 var MAX_UPLOAD = 5 * 1024 * 1024;
+var isMedia = function (kind) { return kind === 'image' || kind === 'video' || kind === 'audio'; };
+var refreshStack = function (stack) { if (window.ltStack) window.ltStack.refresh(stack); };
 
 // A file the owner since deleted or hid: drop its broken thumbnail.
 document.addEventListener('error', function (e) {
   var img = e.target;
   if (img && img.tagName === 'IMG' && img.closest && img.closest('.lt-file-card')) {
     var li = img.closest('li');
+    var stack = img.closest('.lt-files');
     if (li) li.parentNode.removeChild(li);
+    if (stack) refreshStack(stack);
   }
 }, true);
 
+var viewer = null; // { box, cards, index, stack }
+
 function closeViewer() {
-  var v = document.querySelector('.lt-viewer');
-  if (v) v.parentNode.removeChild(v);
+  if (viewer && viewer.box.parentNode) viewer.box.parentNode.removeChild(viewer.box);
+  viewer = null;
   document.removeEventListener('keydown', viewerKeys);
 }
-function viewerKeys(e) { if (e.key === 'Escape') closeViewer(); }
+function viewerKeys(e) {
+  if (e.key === 'Escape') closeViewer();
+  else if (e.key === 'ArrowLeft') showInViewer(viewer.index - 1);
+  else if (e.key === 'ArrowRight') showInViewer(viewer.index + 1);
+}
 
-function openViewer(card) {
+function viewerButton(text, label, onClick) {
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = text;
+  if (label) btn.setAttribute('aria-label', label);
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+
+function showInViewer(i) {
+  if (!viewer || i < 0 || i >= viewer.cards.length) return;
+  viewer.index = i;
+  var card = viewer.cards[i];
   var kind = card.getAttribute('data-kind');
   var href = card.getAttribute('href');
   var name = card.getAttribute('data-name') || '';
+  var box = viewer.box;
+  var old = box.querySelector('.lt-viewer-media');
+  var media;
+  if (kind === 'image') { media = document.createElement('img'); media.alt = name; }
+  else { media = document.createElement(kind); media.controls = true; if (kind === 'video') media.playsInline = true; }
+  media.className = 'lt-viewer-media';
+  media.src = href;
+  box.replaceChild(media, old);
+  box.setAttribute('aria-label', name);
+  box.querySelector('.lt-viewer-name').textContent = name;
+  var dl = box.querySelector('.lt-viewer-download');
+  if (dl) { dl.href = href; dl.setAttribute('download', name); }
+  var n = viewer.cards.length;
+  var nav = box.querySelector('.lt-viewer-nav');
+  nav.hidden = n < 2;
+  nav.querySelector('.lt-viewer-count').textContent = (i + 1) + ' / ' + n;
+  nav.firstChild.disabled = i === 0;
+  nav.lastChild.disabled = i === n - 1;
+  // Keep the stack on the same file, so closing lands where you were.
+  var li = card.closest('li');
+  var all = Array.prototype.slice.call(viewer.stack.querySelectorAll('.lt-file-stack > li'));
+  if (window.ltStack && li) window.ltStack.go(viewer.stack, all.indexOf(li));
+}
+
+function openViewer(card) {
+  closeViewer();
+  var stack = card.closest('.lt-files');
+  var cards = Array.prototype.filter.call(stack.querySelectorAll('.lt-file-card'), function (c) {
+    return isMedia(c.getAttribute('data-kind'));
+  });
   var box = document.createElement('div');
   box.className = 'lt-viewer';
   box.setAttribute('role', 'dialog');
   box.setAttribute('aria-modal', 'true');
-  box.setAttribute('aria-label', name);
-  var media;
-  if (kind === 'image') { media = document.createElement('img'); media.alt = name; }
-  else { media = document.createElement(kind); media.controls = true; if (kind === 'video') media.playsInline = true; }
-  media.src = href;
   var bar = document.createElement('div');
   bar.className = 'lt-viewer-bar';
   var title = document.createElement('span');
-  title.textContent = name;
-  var open = document.createElement('a');
-  open.href = href;
-  open.textContent = 'Open';
-  var close = document.createElement('button');
-  close.type = 'button';
-  close.textContent = 'Close';
-  close.addEventListener('click', closeViewer);
+  title.className = 'lt-viewer-name';
   bar.appendChild(title);
-  bar.appendChild(open);
+  if (stack.hasAttribute('data-downloads')) {
+    var dl = document.createElement('a');
+    dl.className = 'lt-viewer-download';
+    dl.textContent = 'Download';
+    bar.appendChild(dl);
+  }
+  var close = viewerButton('Close', '', closeViewer);
   bar.appendChild(close);
+  var nav = document.createElement('div');
+  nav.className = 'lt-viewer-nav';
+  var count = document.createElement('span');
+  count.className = 'lt-viewer-count';
+  count.setAttribute('aria-live', 'polite');
+  nav.appendChild(viewerButton('‹', 'Previous file', function () { showInViewer(viewer.index - 1); }));
+  nav.appendChild(count);
+  nav.appendChild(viewerButton('›', 'Next file', function () { showInViewer(viewer.index + 1); }));
+  var placeholder = document.createElement('span');
+  placeholder.className = 'lt-viewer-media';
   box.appendChild(bar);
-  box.appendChild(media);
+  box.appendChild(placeholder);
+  box.appendChild(nav);
   box.addEventListener('click', function (e) { if (e.target === box) closeViewer(); });
+  // Swipe left or right for the next or previous file (not on a video's
+  // controls, which need sideways drags to seek).
+  var startX = null, startY = 0;
+  box.addEventListener('touchstart', function (e) {
+    var t = e.touches[0];
+    startX = e.touches.length === 1 && !/^(VIDEO|AUDIO)$/.test(e.target.tagName) ? t.clientX : null;
+    startY = t.clientY;
+  }, { passive: true });
+  box.addEventListener('touchend', function (e) {
+    if (startX === null || !viewer) return;
+    var t = e.changedTouches[0];
+    var dx = t.clientX - startX, dy = t.clientY - startY;
+    startX = null;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) showInViewer(viewer.index + (dx < 0 ? 1 : -1));
+  }, { passive: true });
   document.body.appendChild(box);
+  viewer = { box: box, cards: cards, index: 0, stack: stack };
+  showInViewer(cards.indexOf(card));
   document.addEventListener('keydown', viewerKeys);
   close.focus();
 }
 
 document.addEventListener('click', function (e) {
   var card = e.target.closest && e.target.closest('.lt-file-card');
-  if (!card) return;
-  var kind = card.getAttribute('data-kind');
-  if (kind !== 'image' && kind !== 'video' && kind !== 'audio') return; // opens normally
+  if (!card || !card.closest('.lt-files')) return;
+  if (!isMedia(card.getAttribute('data-kind'))) return; // opens normally
   e.preventDefault();
   openViewer(card);
 });
@@ -235,7 +310,13 @@ function addCard(stack, file, localUrl) {
     var t = document.createElement('span');
     t.className = 'lt-file-type';
     var m = file.name.match(/\.([a-z0-9]+)$/i);
-    t.textContent = m ? m[1].toUpperCase() : 'FILE';
+    if (file.kind === 'video' || file.kind === 'audio') {
+      var play = document.createElement('span');
+      play.className = 'lt-file-play';
+      play.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z" fill="#161616"/></svg>';
+      t.appendChild(play);
+    }
+    t.appendChild(document.createTextNode(m ? m[1].toUpperCase() : 'FILE'));
     a.appendChild(t);
   }
   var label = document.createElement('span');
@@ -244,6 +325,8 @@ function addCard(stack, file, localUrl) {
   a.appendChild(label);
   li.appendChild(a);
   list.appendChild(li);
+  refreshStack(stack);
+  if (window.ltStack) window.ltStack.go(stack, list.children.length - 1);
 }
 
 document.addEventListener('change', function (e) {

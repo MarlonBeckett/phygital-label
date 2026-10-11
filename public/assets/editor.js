@@ -47,7 +47,7 @@ function blankState() {
 }
 
 function newBlock(type, target = '') {
-  return { id: newId('b'), type, label: '', url: '', text: '', color: '', target, file: '', editable: false, files: [], uploads: false };
+  return { id: newId('b'), type, label: '', url: '', text: '', color: '', target, file: '', editable: false, files: [], uploads: false, downloads: false };
 }
 
 function page() {
@@ -92,6 +92,7 @@ function toData() {
         if (b.type === 'files') {
           out.files = Array.isArray(b.files) ? [...b.files] : [];
           if (b.uploads) out.uploads = true;
+          if (b.downloads) out.downloads = true;
         }
         if (b.type === 'menu') out.page = byId.has(b.target) ? byId.get(b.target) : '#missing';
         if ((b.type === 'link' || b.type === 'menu' || b.type === 'heading' || b.type === 'file') && b.color) out.color = b.color;
@@ -129,6 +130,7 @@ function fromData(slug, tag, sha) {
         editable: b.editable === true,
         files: Array.isArray(b.files) ? [...b.files] : [],
         uploads: b.uploads === true,
+        downloads: b.downloads === true,
         color: normColor(b.color) || '',
         target: b.type === 'menu' ? (bySlug.get(b.page) || '') : ''
       }))
@@ -1144,6 +1146,9 @@ function blockCard(b, i, n) {
     h += `<label class="tm-switch-row tm-switch-inline"><span class="tm-switch-text"><span class="tm-switch-title">Anyone can upload</span>` +
       `<span class="tm-hint">People who tap the sticker can add files to this stack, no login. Up to 5 MB each, 3 an hour per person.</span></span>` +
       `<input type="checkbox" class="tm-switch" data-field="uploads"${b.uploads ? ' checked' : ''}></label>`;
+    h += `<label class="tm-switch-row tm-switch-inline"><span class="tm-switch-text"><span class="tm-switch-title">Download button</span>` +
+      `<span class="tm-hint">Adds a Download button for the file in view. Without it, people can still view the files.</span></span>` +
+      `<input type="checkbox" class="tm-switch" data-field="downloads"${b.downloads ? ' checked' : ''}></label>`;
   }
   if (t === 'link' || t === 'menu' || t === 'heading' || t === 'file') {
     const cid = `col-${b.id}`;
@@ -1210,8 +1215,8 @@ $('block-list').addEventListener('input', (e) => {
     card.querySelector('.tm-color-box').style.backgroundColor = b.color;
     card.querySelector('.tm-color-text').textContent = b.color;
     card.querySelector('[data-act="reset-color"]').hidden = false;
-  } else if (field === 'uploads') {
-    b.uploads = e.target.checked;
+  } else if (field === 'uploads' || field === 'downloads') {
+    b[field] = e.target.checked;
     edited();
     renderLive();
     return;

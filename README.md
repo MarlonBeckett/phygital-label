@@ -140,7 +140,7 @@ Settings are saved in `public/tags/_settings.json` in your repo. The underscore 
 | **Link** | A tape strip that opens a web address (must start with `https://` or `http://`). If you haven't added the address yet, it shows faded and can't be tapped. |
 | **Text** | A paper note. Line breaks are kept. Add a link inside text like this: `[the manual](https://example.com)`. Switch on **Anyone can edit** to let people who tap the sticker change it (see below). |
 | **File** | One of your uploaded **public** files (see Files below). Photos show on the page, videos and audio play there, and anything else (a PDF manual, say) opens from a tape strip. |
-| **File stack** | A list of public files, with photos as thumbnails: tap one to view it. Switch on **Anyone can upload** to let people who tap the sticker add files to it, like receipts under a service log (see below). |
+| **File stack** | Public files shown one at a time: swipe (or use the arrows) to go through them, tap a photo or video to view it full screen. Two separate switches: **Download button** adds a button to download the file in view, and **Anyone can upload** lets people who tap the sticker add files, like receipts under a service log (see below). |
 | **Video** | A YouTube video (youtube.com, youtu.be or Shorts links). It shows the thumbnail, and the player only loads when someone taps it, using YouTube's privacy-enhanced mode. |
 | **Menu** | A strip with a second strip peeking out behind it. It opens another page of the same tag, which has its own color and blocks. Choose **+ New page** to make one. |
 | **Heading** | A small strip that labels a section. Not clickable. |
