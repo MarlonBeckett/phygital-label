@@ -1,10 +1,19 @@
-/* Tag maker (/new). Loaded after label.css. */
+/* Phygital label maker (/new). Loaded after label.css. */
 
 body.tm {
   margin: 0;
   background-color: #EFEEEA;
-  font-family: var(--ui);
+  font-family: var(--text-font);
+  font-size-adjust: var(--text-adjust);
+  letter-spacing: var(--text-track);
+  font-synthesis: none;
   color: var(--ink);
+}
+/* The phygital label maker's own screens follow the last text style picked on this phone. */
+body.tm.tm-regular {
+  --text-font: var(--ui);
+  --text-adjust: none;
+  --text-track: normal;
 }
 body.tm.tm-board {
   background-color: var(--board);
@@ -18,10 +27,10 @@ body.tm.tm-board {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
-.tm-mono { font-family: var(--mono); }
-.tm-loading { margin: 40vh 0 0; text-align: center; font-family: var(--mono); font-size: 13px; color: #55524C; }
+.tm-mono { font-family: var(--mono); font-size-adjust: none; letter-spacing: normal; }
+.tm-loading { margin: 40vh 0 0; text-align: center; font-size: 13px; color: #55524C; }
 
-main.tm-login, main.tm-editor, main.tm-saved {
+main.tm-login, main.tm-home, main.tm-editor, main.tm-saved {
   box-sizing: border-box;
   max-width: 480px;
   margin: 0 auto;
@@ -29,6 +38,17 @@ main.tm-login, main.tm-editor, main.tm-saved {
   flex-direction: column;
 }
 .tm-login { min-height: 100vh; padding: 120px 24px 32px; align-items: center; }
+.tm-home { padding: 48px 20px 40px; gap: 30px; }
+.tm-home > .tm-name { align-self: center; margin-bottom: 4px; }
+.tm-panel { display: flex; flex-direction: column; gap: 30px; }
+
+/* Main menu tabs: two strips of tape; the open one is dark. */
+.tm-tabs { display: flex; justify-content: center; gap: 12px; }
+.tm-tab { min-height: 44px; padding: 8px 16px 7px; border: 0; align-items: center; font-size: 20px; }
+.tm-tab:nth-child(1) { transform: rotate(-1deg); }
+.tm-tab:nth-child(2) { transform: rotate(0.9deg); }
+.tm-tab[aria-selected="false"] { background-color: #D3D0C8; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -2px 0 rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.12); }
+.tm-tab[aria-selected="false"] .lt-letters { color: #3D3A35; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6); }
 .tm-editor { padding: 20px 20px 48px; gap: 26px; }
 .tm-saved { padding: 56px 20px 40px; gap: 24px; }
 
@@ -54,6 +74,27 @@ main.tm-login, main.tm-editor, main.tm-saved {
 }
 .tm-tape-xl { padding: 14px 22px 12px; font-size: 42px; transform: rotate(-1.1deg); }
 .tm-tape-sm { padding: 9px 14px 8px; font-size: 24px; transform: rotate(-1deg); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -2px 0 rgba(0, 0, 0, 0.3), 0 3px 6px rgba(0, 0, 0, 0.14); }
+/* The name: two separate strips, the second stuck on just below the first. */
+.tm-name { margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 7px; font-weight: 400; }
+.tm-name .tm-tape-md { margin-left: 34px; padding: 9px 16px 8px; font-size: 26px; transform: rotate(1.2deg); }
+
+/* A button printed on tape. */
+.tm-tape-btn {
+  align-self: center;
+  min-height: 52px;
+  padding: 12px 26px 10px;
+  border: 0;
+  align-items: center;
+  font-size: 30px;
+  transform: rotate(-1deg);
+}
+.tm-tape-btn:active { filter: brightness(1.15); transform: rotate(-1deg) translateY(1px); }
+a.tm-tape-btn { text-decoration: none; justify-content: center; }
+.tm-tape-new { background-color: #17633A; transform: rotate(0.9deg); }
+.tm-tape-new:active { transform: rotate(0.9deg) translateY(1px); }
+.tm-tape-claude { background-color: #D9601A; font-size: 21px; transform: rotate(0.8deg); }
+.tm-tape-claude:active { transform: rotate(0.8deg) translateY(1px); }
+.tm .tm-tape-btn:disabled { opacity: 0.6; }
 .tm-tape-green { background-color: #17633A; font-size: 48px; padding: 14px 24px 12px; transform: rotate(-1.4deg); }
 
 /* ---- Common pieces ---- */
@@ -72,12 +113,12 @@ main.tm-login, main.tm-editor, main.tm-saved {
 .tm-field { display: flex; flex-direction: column; gap: 8px; }
 .tm-label { margin: 0; padding: 0; font-size: 14px; font-weight: 600; }
 .tm-h2 { margin: 0; font-size: 18px; font-weight: 700; }
-.tm-count { font-family: var(--mono); font-size: 12px; color: #55524C; }
-.tm-kicker { margin: 0; font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #55524C; word-break: break-all; }
+.tm-count { font-size: 12px; color: #55524C; }
+.tm-kicker { margin: 0; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #55524C; word-break: break-all; }
 .tm-hint { margin: 0; font-size: 13px; line-height: 1.45; color: #55524C; }
 .tm-hint-lg { font-size: 14px; }
 .tm-error { margin: 0; font-size: 13px; line-height: 1.4; color: #A0151B; }
-.tm-note-line { margin: -10px 0 0; font-family: var(--mono); font-size: 12px; color: #55524C; }
+.tm-note-line { margin: -10px 0 0; font-size: 12px; color: #55524C; }
 
 .tm-input {
   box-sizing: border-box;
@@ -138,7 +179,78 @@ main.tm-login, main.tm-editor, main.tm-saved {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.06);
 }
 .tm-login-card .tm-input { height: 52px; }
-.tm-login-card .tm-btn { margin-top: 6px; }
+.tm-login-card .tm-btn, .tm-login-card .tm-tape-btn { margin-top: 6px; }
+
+/* ---- Main menu ---- */
+/* "Your GitHub key has expired / expires soon", with the steps to fix it. */
+.tm-notice { padding: 18px; display: flex; flex-direction: column; gap: 12px; border-radius: 14px; border: 2px solid; background-color: #FFFFFF; }
+.tm-notice-bad { border-color: #A0151B; }
+.tm-notice-warn { border-color: #D9601A; }
+.tm-notice-title { margin: 0; font-size: 17px; }
+.tm-notice-bad .tm-notice-title { color: #A0151B; }
+.tm-notice-warn .tm-notice-title { color: #A84A12; }
+/* Steps you must follow exactly: always in the plain font. */
+.tm-notice p, .tm-notice ol { font-family: var(--ui); font-size-adjust: none; letter-spacing: normal; }
+.tm-notice p { margin: 0; font-size: 14px; line-height: 1.5; }
+.tm-notice ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 1.5; }
+.tm-notice a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+.tm-notice .tm-btn-outline { align-self: flex-start; }
+.tm-save-errors .tm-notice { margin: -14px -16px; }
+.tm-draft {
+  min-height: 56px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1.5px dashed #8C8880;
+  border-radius: 12px;
+  background-color: #F7EFD9;
+  text-align: left;
+}
+.tm-draft-text { display: flex; flex-direction: column; gap: 2px; font-size: 14px; min-width: 0; }
+.tm-draft-text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #55524C; }
+.tm-draft-go { flex: none; font-size: 14px; }
+.tm-label-list { display: flex; flex-direction: column; gap: 12px; }
+.tm-empty { padding: 22px 18px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; border-radius: 14px; background-color: rgba(255, 255, 255, 0.6); }
+.tm-item {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-radius: 14px;
+  background-color: #FFFFFF;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.tm-item-main {
+  padding: 4px 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.tm-item-tape {
+  max-width: 100%;
+  padding: 8px 12px 7px;
+  font-size: 20px;
+  transform: rotate(-0.8deg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -2px 0 rgba(0, 0, 0, 0.3), 0 2px 5px rgba(0, 0, 0, 0.16);
+}
+.tm-item-tape .lt-letters { flex-wrap: wrap; }
+.tm-item-addr { font-family: var(--mono); font-size-adjust: none; letter-spacing: normal; font-size: 13px; color: #55524C; word-break: break-all; }
+.tm-item-actions { display: flex; align-items: center; gap: 8px; }
+.tm-item-actions .tm-remove { margin-left: auto; }
+.tm-health { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.tm-health li { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.4; }
+.tm-health li::before { content: ''; flex: none; width: 10px; height: 10px; margin-top: 4px; border-radius: 50%; background-color: #8C8880; }
+.tm-health li.tm-ok::before { background-color: #17633A; }
+.tm-health li.tm-warn::before { background-color: #D9601A; }
+.tm-health li.tm-fail::before { background-color: #A0151B; }
+a.tm-btn { text-decoration: none; color: var(--ink); }
+.tm-btn-sm { height: 40px; font-size: 14px; text-decoration: none; color: var(--ink); }
 
 /* ---- Editor ---- */
 .tm-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -171,7 +283,7 @@ main.tm-login, main.tm-editor, main.tm-saved {
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
   overflow: hidden;
 }
-.tm-preview-empty { margin: 0; text-align: center; font-family: var(--mono); font-size: 12px; color: #6A665F; }
+.tm-preview-empty { margin: 0; text-align: center; font-size: 12px; color: #6A665F; }
 
 .tm-addr {
   height: 48px;
@@ -184,7 +296,7 @@ main.tm-login, main.tm-editor, main.tm-saved {
   overflow: hidden;
 }
 .tm-addr.tm-bad { border-color: #A0151B; }
-.tm-addr-prefix { padding: 0 2px 0 12px; font-family: var(--mono); font-size: 13px; color: #6A665F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
+.tm-addr-prefix { padding: 0 2px 0 12px; font-family: var(--mono); font-size-adjust: none; letter-spacing: normal; font-size: 13px; color: #6A665F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
 .tm-addr input {
   flex: 1 1 auto;
   min-width: 0;
@@ -243,7 +355,70 @@ main.tm-login, main.tm-editor, main.tm-saved {
   cursor: pointer;
 }
 .tm-swatch-custom svg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5)); pointer-events: none; }
-.tm-color-line { margin: 12px 0 0; display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; color: #55524C; }
+/* On/off switch rows (text style). */
+.tm-switch-row {
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: 12px;
+  background-color: #FFFFFF;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+}
+.tm-card .tm-switch-row { padding: 0; box-shadow: none; }
+.tm-switch-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.tm-switch-title { font-size: 16px; }
+.tm-sample-regular { font-family: var(--mono); font-size-adjust: none; letter-spacing: normal; }
+.tm-sample-label { font-family: var(--label-font); font-size-adjust: cap-height 0.58; letter-spacing: 0.04em; }
+.tm-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  position: relative;
+  width: 52px;
+  height: 32px;
+  margin: 0;
+  border-radius: 16px;
+  background-color: #B9B5AD;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.tm-switch::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background-color: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s;
+}
+.tm-switch:checked { background-color: #17633A; }
+.tm-switch:checked::after { transform: translateX(20px); }
+.tm-switch:disabled { opacity: 0.5; }
+
+/* A card that opens and closes (Connect to Claude). */
+.tm-collapse { padding: 0; }
+.tm-collapse-head {
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  list-style: none;
+  cursor: pointer;
+}
+.tm-collapse-head::-webkit-details-marker { display: none; }
+.tm-collapse-text { flex: 1 1 auto; display: flex; flex-direction: column; gap: 4px; }
+.tm-collapse-chev { flex: none; transition: transform 0.15s; }
+.tm-collapse[open] .tm-collapse-chev { transform: rotate(180deg); }
+.tm-collapse-body { padding: 0 18px 18px; }
+.tm-collapse-head:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; border-radius: 14px; }
+.tm-preview .lt-back { margin: -18px 0 6px; min-height: 36px; }
+@media (prefers-reduced-motion: reduce) { .tm-switch, .tm-switch::after, .tm-collapse-chev { transition: none; } }
+.tm-color-line { margin: 12px 0 0; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #55524C; }
 #color-dot { width: 14px; height: 14px; border-radius: 2px; flex: none; }
 
 .tm-block-list { display: flex; flex-direction: column; gap: 12px; }
@@ -265,7 +440,6 @@ main.tm-login, main.tm-editor, main.tm-saved {
   padding: 0 9px 0 7px;
   border-radius: 3px;
   background-color: #EFEEEA;
-  font-family: var(--mono);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.08em;
@@ -306,9 +480,9 @@ main.tm-login, main.tm-editor, main.tm-saved {
 .tm-color-row label { font-size: 13px; font-weight: 600; }
 .tm-color-box { position: relative; width: 52px; height: 34px; flex: none; border-radius: 6px; box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, 0.18); }
 .tm-color-box input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: 0; padding: 0; cursor: pointer; }
-.tm-color-text { font-family: var(--mono); font-size: 12px; color: #55524C; }
+.tm-color-text { font-size: 12px; color: #55524C; }
 .tm-reset { margin-left: auto; height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background-color: #EFEEEA; font-size: 13px; font-weight: 600; }
-.tm-code { font-family: var(--mono); color: var(--ink); }
+.tm-code { font-family: var(--mono); font-size-adjust: none; letter-spacing: normal; color: var(--ink); }
 
 .tm-add-title { margin-top: 8px; font-size: 13px; }
 .tm-add-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
@@ -357,6 +531,8 @@ main.tm-login, main.tm-editor, main.tm-saved {
   border-radius: 10px;
   background-color: #F3F2EE;
   font-family: var(--mono);
+  font-size-adjust: none;
+  letter-spacing: normal;
   font-size: 16px;
   font-weight: 500;
   word-break: break-all;
@@ -375,7 +551,7 @@ main.tm-login, main.tm-editor, main.tm-saved {
   border-radius: 3px;
   background-color: #161616;
   color: #F3F1EA;
-  font-family: 'Anton', Impact, sans-serif;
+  font-family: var(--label-font);
   font-size: 15px;
   box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.3);
 }
@@ -404,3 +580,5 @@ main.tm-login, main.tm-editor, main.tm-saved {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 .tm-dialog::backdrop { background: rgba(20, 20, 20, 0.45); }
+.tm-ask-text { margin: 0 0 6px; font-size: 16px; line-height: 1.5; white-space: pre-line; }
+.tm-btn-danger-fill { background-color: #A0151B; color: #FFFFFF !important; }

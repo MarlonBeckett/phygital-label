@@ -1,13 +1,15 @@
-// Tag maker (/new): unlock, edit pages and blocks with a live preview, save
-// to GitHub through /api, then write the address to an NFC tag.
+// Phygital label maker (/new): unlock, see and manage your labels on the main
+// menu, edit pages and blocks with a live preview, save to GitHub through
+// /api, then write the address to an NFC tag.
 
 import {
   PRESETS, DEFAULT_COLOR, LIMITS, esc, embossHtml, normColor, isHttpUrl, youtubeId,
-  slugProblem, renderPageHtml, validateTag
+  slugProblem, renderPageHtml, validateTag, ink, nextFreeSlug, backLinkHtml
 } from './label.js';
 
 const $ = (id) => document.getElementById(id);
 const DRAFT_KEY = 'tag-maker-draft-v1';
+const SITE_FONT_KEY = 'tag-maker-site-font';
 
 const ICONS = {
   link: 'M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1',
@@ -34,7 +36,9 @@ function blankState() {
     tagSlug: '',
     loadedSlug: '', // the tag as it was opened from GitHub…
     sha: '', // …and its version, so saves never overwrite newer edits
+    dirty: false, // changed since it was opened or saved
     current: 'main',
+    font: '', // '' follows the site default
     pages: [{ id: 'main', title: '', slug: '', color: DEFAULT_COLOR, blocks: [newBlock('link')] }]
   };
 }
@@ -71,6 +75,7 @@ function toData() {
   const byId = new Map(state.pages.map((p, i) => [p.id, i === 0 ? '' : p.slug]));
   return {
     v: 1,
+    ...(state.font === 'label' || state.font === 'regular' ? { font: state.font } : {}),
     pages: state.pages.map((p, i) => ({
       slug: i === 0 ? '' : p.slug,
       title: p.title.trim(),
@@ -95,7 +100,9 @@ function fromData(slug, tag, sha) {
     tagSlug: slug,
     loadedSlug: slug,
     sha: sha || '',
+    dirty: false,
     current: 'main',
+    font: tag.font || '',
     pages: tag.pages.map((p, i) => ({
       id: ids[i],
       title: p.title || '',
@@ -133,6 +140,8 @@ function loadDraft() {
     const d = JSON.parse(raw);
     if (!d || !d.state || !Array.isArray(d.state.pages) || !d.state.pages.length) return false;
     state = d.state;
+    // Drafts from before the main menu: treat new work as unsaved.
+    if (typeof state.dirty !== 'boolean') state.dirty = !state.loadedSlug && hasWork();
     seq = Math.max(seq, Number(d.seq) || 1000);
     return true;
   } catch (e) {
@@ -140,6 +149,7 @@ function loadDraft() {
   }
 }
 function changed() {
+  state.dirty = true;
   saveDraft();
   renderLive();
 }
@@ -164,18 +174,62 @@ async function api(path, options = {}) {
 
 // -------------------------------------------------------------- screens ---
 
+// Asks a question in the app's own dialog. (The browser's confirm() and
+// alert() are silently blocked in some in-app browsers, which made buttons
+// look dead.) Resolves with the tapped button's value, or null for Cancel.
+// Button styles: 'dark' (default), 'danger', 'outline'.
+function choose(message, buttons, { cancel = 'Cancel' } = {}) {
+  const d = $('ask-dialog');
+  const box = $('ask-buttons');
+  const list = cancel ? [...buttons, { label: cancel, value: null, style: 'plain' }] : buttons;
+  const cls = { dark: 'tm-btn-dark', danger: 'tm-btn-danger-fill', outline: 'tm-btn-outline-lg', plain: 'tm-btn-plain' };
+  $('ask-text').textContent = message;
+  box.innerHTML = list.map((b, i) =>
+    `<button type="button" class="tm-btn ${cls[b.style || 'dark']}" data-i="${i}">${esc(b.label)}</button>`
+  ).join('');
+  return new Promise((resolve) => {
+    // Answer straight from the taps (the dialog's close event can arrive
+    // late), and unhook every time so answers never pile up.
+    const finish = (value) => {
+      box.removeEventListener('click', onClick);
+      d.removeEventListener('cancel', onEscape);
+      if (d.open) d.close();
+      resolve(value);
+    };
+    const onClick = (e) => {
+      const b = e.target.closest('[data-i]');
+      if (b) finish(list[Number(b.getAttribute('data-i'))].value);
+    };
+    const onEscape = (e) => { e.preventDefault(); finish(null); };
+    box.addEventListener('click', onClick);
+    d.addEventListener('cancel', onEscape);
+    d.showModal();
+    box.querySelector('button').focus();
+  });
+}
+
+// A yes/no question; resolves true for OK. Pass cancel: '' for a message.
+function ask(message, { ok = 'OK', cancel = 'Cancel', danger = false } = {}) {
+  return choose(message, [{ label: ok, value: true, style: danger ? 'danger' : 'dark' }], { cancel }).then((v) => v === true);
+}
+const tell = (message) => ask(message, { cancel: '' });
+
 function show(name) {
-  for (const id of ['loading', 'screen-login', 'screen-editor', 'screen-saved']) {
+  for (const id of ['loading', 'screen-login', 'screen-home', 'screen-editor', 'screen-saved']) {
     $(id).hidden = id !== name;
   }
-  document.body.classList.toggle('tm-board', name === 'screen-login');
+  document.body.classList.toggle('tm-board', name === 'screen-login' || name === 'screen-home');
   window.scrollTo(0, 0);
 }
 
+function setEmboss(el, text) {
+  el.setAttribute('data-emboss', text);
+  if (el.tagName === 'BUTTON' || el.tagName === 'A') el.setAttribute('aria-label', text);
+  el.innerHTML = `<span class="lt-letters" aria-hidden="true">${embossHtml(text)}</span>`;
+}
+
 function fillEmboss() {
-  document.querySelectorAll('[data-emboss]').forEach((el) => {
-    el.innerHTML = `<span class="lt-letters" aria-hidden="true">${embossHtml(el.getAttribute('data-emboss'))}</span>`;
-  });
+  document.querySelectorAll('[data-emboss]').forEach((el) => setEmboss(el, el.getAttribute('data-emboss')));
 }
 
 function setupError(msg) {
@@ -202,17 +256,17 @@ $('login-form').addEventListener('submit', async (e) => {
   const password = $('pw').value;
   if (!password) return;
   btn.disabled = true;
-  btn.textContent = 'Checking…';
+  setEmboss(btn, 'Checking…');
   $('login-error').hidden = true;
   const { status, data } = await api('/api/login', { method: 'POST', body: JSON.stringify({ password }) });
   btn.disabled = false;
-  btn.textContent = 'Unlock';
+  setEmboss(btn, 'Unlock');
   if (status === 200) {
     $('pw').value = '';
     const next = afterLogin;
     afterLogin = null;
-    openEditor();
-    if (next) next();
+    loadSiteSettings();
+    if (next) next(); else showHome();
     return;
   }
   if (data.setup) return setupError(data.error);
@@ -220,16 +274,274 @@ $('login-form').addEventListener('submit', async (e) => {
   $('login-error').hidden = false;
 });
 
-$('logout-btn').addEventListener('click', async () => {
+// ------------------------------------------------------------ main menu ---
+
+const unsaved = () => state.dirty && hasWork();
+let labels = [];
+
+function showHome() {
+  show('screen-home');
+  showTab('labels');
+  $('mcp-url').textContent = `${location.origin}/mcp`;
+  $('mcp-copied').hidden = true;
+  $('mcp-copy').hidden = false;
+  const draft = unsaved();
+  $('home-draft').hidden = !draft;
+  if (draft) {
+    const main = state.pages[0];
+    $('home-draft-name').textContent = main.title || (state.tagSlug ? `/${state.tagSlug}` : 'Untitled label');
+  }
+  loadLabels();
+}
+
+function homeMessage(text, retry) {
+  $('label-count').textContent = '';
+  $('label-list').innerHTML = `<div class="tm-empty"><p class="tm-hint tm-hint-lg">${esc(text)}</p>` +
+    (retry ? '<button type="button" id="labels-retry" class="tm-btn-outline">Try again</button>' : '') + '</div>';
+}
+
+// The GitHub token is the one thing that wears out (it expires, often after
+// a year). When it has, or soon will, say so plainly with the fix, since
+// nobody remembers how this was set up.
+let githubRepo = '';
+
+function tokenHelpHtml(kind, expires = '') {
+  const when = expires ? new Date(expires) : null;
+  const days = when ? Math.ceil((when - Date.now()) / 86400000) : 0;
+  const date = when ? when.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  const title = kind === 'bad'
+    ? 'Your GitHub key has expired'
+    : `Your GitHub key expires in ${days} day${days === 1 ? '' : 's'}`;
+  const intro = kind === 'bad'
+    ? 'Your labels and stickers still work. To make or change labels, give the site a new GitHub key. It takes about 2 minutes:'
+    : `Everything works until ${date}. Replace the key before then so saving keeps working. It takes about 2 minutes:`;
+  const repo = githubRepo ? `<span class="tm-code">${esc(githubRepo)}</span>` : 'your labels repo';
+  return `<div class="tm-notice tm-notice-${kind}">` +
+    `<h2 class="tm-notice-title">${esc(title)}</h2><p>${esc(intro)}</p><ol>` +
+    `<li>On GitHub, <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">make a new fine-grained token</a>. Under <strong>Repository access</strong> pick only ${repo}, set <strong>Contents</strong> to <strong>Read and write</strong>, and choose the longest expiry. Copy the token.</li>` +
+    `<li>In <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">Cloudflare</a>, open <strong>Workers &amp; Pages</strong>, then this site's project (${esc(location.host)}), then <strong>Settings › Variables and Secrets</strong>. Edit <strong>GITHUB_TOKEN</strong>, paste the new token and save.</li>` +
+    `<li>Open <strong>Deployments</strong>, tap <strong>⋯</strong> on the latest one and choose <strong>Retry deployment</strong>. After a minute, tap Check again.</li>` +
+    `</ol><button type="button" class="tm-btn-outline" data-recheck>Check again</button></div>`;
+}
+
+function showTokenNotice(kind, expires) {
+  const box = $('token-notice');
+  box.innerHTML = kind ? tokenHelpHtml(kind, expires) : '';
+  box.hidden = !kind;
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-recheck]')) { $('save-errors').hidden = true; showHome(); }
+});
+
+async function loadLabels() {
+  homeMessage('Loading your labels…');
+  const { status, data } = await api('/api/tags');
+  if (status === 401 && data.login) return showLogin('Please unlock again.');
+  if (data.repo) githubRepo = data.repo;
+  if (status !== 200) {
+    if (data.github === 401) {
+      showTokenNotice('bad');
+      return homeMessage('Your labels can\'t be listed until the GitHub key is replaced (see above). They still work on your stickers.');
+    }
+    showTokenNotice('');
+    return homeMessage(data.error || 'Could not load your labels.', !data.setup);
+  }
+  const daysLeft = data.tokenExpires ? (new Date(data.tokenExpires) - Date.now()) / 86400000 : Infinity;
+  showTokenNotice(daysLeft <= 0 ? 'bad' : daysLeft <= 14 ? 'warn' : '', data.tokenExpires);
+  labels = data.tags || [];
+  renderLabels();
+}
+
+function renderLabels() {
+  const n = labels.length;
+  $('label-count').textContent = n === 1 ? '1 label' : `${n} labels`;
+  if (!n) return homeMessage('No labels yet. Tap New label to make your first one, or ask Claude.');
+  $('label-list').innerHTML = labels.map((l) => {
+    const c = ink(l.color);
+    const title = l.title || l.slug;
+    return `<div class="tm-item">` +
+      `<button type="button" class="tm-item-main" data-edit="${esc(l.slug)}" aria-label="Edit ${esc(title)}">` +
+      `<span class="tm-tape tm-item-tape" style="background-color:${esc(l.color)}"><span class="lt-letters" aria-hidden="true" style="color:${c.fg};text-shadow:${c.sh}">${embossHtml(title)}</span></span>` +
+      `<span class="tm-item-addr">/${esc(l.slug)}${l.pages > 1 ? ` · ${l.pages} pages` : ''}${l.problems ? ' · needs fixing' : ''}</span>` +
+      `</button>` +
+      `<div class="tm-item-actions">` +
+      `<button type="button" class="tm-btn-outline tm-btn-sm" data-edit="${esc(l.slug)}">Edit</button>` +
+      `<a class="tm-btn-outline tm-btn-sm" href="/${esc(l.slug)}" target="_blank" rel="noopener">View</a>` +
+      `<button type="button" class="tm-icon-btn tm-remove" data-delete="${esc(l.slug)}" aria-label="Delete /${esc(l.slug)}">${svg('M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3', 20, 2)}</button>` +
+      `</div></div>`;
+  }).join('');
+}
+
+$('label-list').addEventListener('click', async (e) => {
+  if (e.target.closest('#labels-retry')) return loadLabels();
+  const edit = e.target.closest('[data-edit]');
+  if (edit) {
+    const slug = edit.getAttribute('data-edit');
+    if (state.loadedSlug === slug && state.dirty) return openEditor();
+    if (unsaved() && !(await ask('Open this label? Your unsaved changes will be lost.', { ok: 'Open it' }))) return;
+    edit.disabled = true;
+    await openTag(slug, (msg) => tell(msg));
+    edit.disabled = false;
+    return;
+  }
+  const del = e.target.closest('[data-delete]');
+  if (del) {
+    const slug = del.getAttribute('data-delete');
+    const item = labels.find((l) => l.slug === slug);
+    if (!(await ask(`Delete /${slug}? Its page stops working, so any sticker pointing at it will show "Nothing here". This can't be undone here.`, { ok: 'Delete label', danger: true }))) return;
+    del.disabled = true;
+    const { status, data } = await api(`/api/tag/${encodeURIComponent(slug)}`, { method: 'DELETE', body: JSON.stringify({ sha: item ? item.sha : '' }) });
+    del.disabled = false;
+    if (status === 401 && data.login) return showLogin('Please unlock again.');
+    if (status !== 200) return tell(data.error || 'Could not delete that label.');
+    if (state.loadedSlug === slug) { state.loadedSlug = ''; state.sha = ''; saveDraft(); }
+    labels = labels.filter((l) => l.slug !== slug);
+    renderLabels();
+  }
+});
+
+$('home-new').addEventListener('click', async () => {
+  if (unsaved() && !(await ask('Start a new label? Your unsaved changes will be lost.', { ok: 'Start new' }))) return;
+  state = blankState();
+  saveDraft();
+  openEditor();
+});
+$('home-draft').addEventListener('click', () => openEditor());
+
+// Main menu tabs: Labels and Settings.
+function showTab(name) {
+  document.querySelectorAll('.tm-tab').forEach((t) => {
+    const on = t.getAttribute('data-tab') === name;
+    t.setAttribute('aria-selected', String(on));
+    t.tabIndex = on ? 0 : -1;
+  });
+  $('panel-labels').hidden = name !== 'labels';
+  $('panel-settings').hidden = name !== 'settings';
+  if (name === 'settings') {
+    $('claude-card').open = false; // always starts collapsed
+    $('site-font-status').textContent = '';
+    loadHealth();
+  }
+}
+
+// ------------------------------------------------------------- settings ---
+
+$('site-font-switch').addEventListener('change', async (e) => {
+  const font = e.target.checked ? 'regular' : 'label';
+  if (font === siteFont) return;
+  const before = siteFont;
+  applySiteFont(font);
+  $('site-font-status').textContent = 'Saving…';
+  const { status, data } = await api('/api/settings', { method: 'PUT', body: JSON.stringify({ font }) });
+  if (status === 200) {
+    $('site-font-status').textContent = 'Saved. Your labels switch over in about a minute, while the site updates.';
+    return;
+  }
+  applySiteFont(before);
+  if (status === 401 && data.login) return showLogin('Please unlock again.');
+  $('site-font-status').textContent = data.error || 'Could not save.';
+});
+
+function healthRow(cls, text) {
+  return `<li class="${cls}"><span>${esc(text)}</span></li>`;
+}
+
+function expiryRow(iso) {
+  if (!iso) return healthRow('tm-ok', 'The GitHub token never expires.');
+  const when = new Date(iso);
+  const days = Math.floor((when - Date.now()) / 86400000);
+  const date = when.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+  if (days < 0) return healthRow('tm-fail', `The GitHub token expired on ${date}. Saving won't work until you make a new one and update GITHUB_TOKEN in Cloudflare.`);
+  if (days <= 14) return healthRow('tm-warn', `The GitHub token expires in ${days} day${days === 1 ? '' : 's'} (${date}). Make a new one soon and update GITHUB_TOKEN in Cloudflare.`);
+  return healthRow('tm-ok', `The GitHub token expires on ${date} (in ${days} days).`);
+}
+
+async function loadHealth() {
+  const list = $('health-list');
+  list.innerHTML = healthRow('', 'Checking…');
+  const { status, data } = await api('/api/settings?health=1');
+  if (status === 401 && data.login) return showLogin('Please unlock again.');
+  if (status !== 200 || !data.health) {
+    list.innerHTML = healthRow('tm-fail', data.error || 'Could not check the site.');
+    return;
+  }
+  const h = data.health;
+  if (data.settings) applySiteFont(data.settings.font);
+  list.innerHTML =
+    healthRow('tm-ok', `Connected to GitHub: ${h.repo}${h.private ? ' (private)' : ''}.`) +
+    (h.private ? '' : healthRow('tm-warn', 'The repo is public, so anyone can read your label files on GitHub. Make it private in the repo settings.')) +
+    expiryRow(h.expires) +
+    healthRow('tm-ok', `${h.labels} label${h.labels === 1 ? '' : 's'} saved.`);
+}
+$('health-refresh').addEventListener('click', () => loadHealth());
+
+$('signout-all').addEventListener('click', async () => {
+  const sure = await ask('Sign out everywhere? Every phone, including this one, will need the password again, and Claude will need to be reconnected. It takes effect in about a minute.', { ok: 'Sign out everywhere', danger: true });
+  if (!sure) return;
+  const btn = $('signout-all');
+  btn.disabled = true;
+  const { status, data } = await api('/api/reset-access', { method: 'POST', body: '{}' });
+  btn.disabled = false;
+  if (status === 401 && data.login) return showLogin('Please unlock again.');
+  if (status !== 200) return tell(data.error || 'Could not sign out everywhere.');
+  showLogin('Signed out everywhere. Wait about a minute for the site to update, then unlock again. Reconnect Claude from Settings.');
+});
+document.querySelector('.tm-tabs').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-tab]');
+  if (t) showTab(t.getAttribute('data-tab'));
+});
+document.querySelector('.tm-tabs').addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const next = $('tab-labels').getAttribute('aria-selected') === 'true' ? 'settings' : 'labels';
+  showTab(next);
+  $(`tab-${next}`).focus();
+});
+$('back-home').addEventListener('click', () => showHome());
+$('saved-home').addEventListener('click', () => showHome());
+$('home-logout').addEventListener('click', async () => {
   await api('/api/logout', { method: 'POST', body: '{}' });
   showLogin('');
 });
+
+async function copyMcpUrl() {
+  try {
+    await navigator.clipboard.writeText(`${location.origin}/mcp`);
+    $('mcp-copy').hidden = true;
+    $('mcp-copied').hidden = false;
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+$('mcp-copy').addEventListener('click', async () => {
+  if (!(await copyMcpUrl())) $('mcp-copy').textContent = 'Press and hold the address to copy';
+});
+// Copies the address on the way to Claude, so it's ready to paste.
+$('claude-connect').addEventListener('click', () => { copyMcpUrl(); });
 
 // --------------------------------------------------------------- editor ---
 
 function openEditor() {
   show('screen-editor');
   renderAll();
+  refreshTaken();
+}
+
+// Keeps the list of used addresses fresh, so the address field can say
+// when a name is taken (labels may have been made elsewhere, e.g. by Claude).
+async function refreshTaken() {
+  const { status, data } = await api('/api/tags');
+  if (status !== 200) return;
+  labels = data.tags || [];
+  if (!$('screen-editor').hidden) renderLive();
+}
+
+const takenSlugs = () => new Set(labels.map((l) => l.slug));
+
+// True when the address belongs to another label than the one being edited.
+function addressInUse(slug = state.tagSlug) {
+  return !!slug && slug !== state.loadedSlug && takenSlugs().has(slug);
 }
 
 function renderAll() {
@@ -240,6 +552,7 @@ function renderAll() {
   $('addr-prefix').textContent = isMain(pg) ? `${location.host}/` : `…/${state.tagSlug || 'tag'}/`;
   $('delete-page').hidden = isMain(pg);
   renderSwatches();
+  markFonts();
   renderBlocks();
   renderAddRow();
   $('save-errors').hidden = true;
@@ -268,7 +581,8 @@ function renderLive() {
   const pageData = data.pages[index];
   const hasContent = pageData.title || pageData.blocks.length;
   $('preview').innerHTML = hasContent
-    ? renderPageHtml(data, pageData, { tagSlug: state.tagSlug || 'tag', compact: true })
+    ? (index > 0 ? backLinkHtml(state.tagSlug || 'tag', data.pages[0].title) : '') +
+      renderPageHtml(data, pageData, { tagSlug: state.tagSlug || 'tag', compact: true, siteFont })
     : '<p class="tm-preview-empty">Add a title or a block to see it here.</p>';
 
   const color = normColor(pg.color) || DEFAULT_COLOR;
@@ -290,7 +604,7 @@ function renderLive() {
 
 function addressProblem() {
   const pg = page();
-  if (isMain(pg)) return slugProblem(state.tagSlug, { isTag: true });
+  if (isMain(pg)) return slugProblem(state.tagSlug, { isTag: true }) || (addressInUse() ? 'Name already in use.' : '');
   const p = slugProblem(pg.slug);
   if (p) return p;
   if (state.pages.some((o) => o.id !== pg.id && o.slug === pg.slug)) return 'Another page already uses this address.';
@@ -346,10 +660,10 @@ $('addr').addEventListener('input', (e) => {
   changed();
 });
 
-$('delete-page').addEventListener('click', () => {
+$('delete-page').addEventListener('click', async () => {
   const pg = page();
   if (isMain(pg)) return;
-  if (!confirm(`Delete the page "${pg.title || 'Untitled'}"? Menu strips that open it will be removed too.`)) return;
+  if (!(await ask(`Delete the page "${pg.title || 'Untitled'}"? Menu strips that open it will be removed too.`, { ok: 'Delete page', danger: true }))) return;
   state.pages = state.pages
     .filter((p) => p.id !== pg.id)
     .map((p) => ({ ...p, blocks: p.blocks.filter((b) => !(b.type === 'menu' && b.target === pg.id)) }));
@@ -405,6 +719,52 @@ $('swatches').addEventListener('input', (e) => {
   markSwatches();
   changed();
   refreshBlockColors();
+});
+
+// ---- text style ----
+
+// The site's default text style (Settings). Remembered on this phone so the
+// unlock screen already uses it.
+let siteFont = 'label';
+try { siteFont = localStorage.getItem(SITE_FONT_KEY) === 'regular' ? 'regular' : 'label'; } catch (e) { /* storage unavailable */ }
+
+function applySiteFont(font) {
+  siteFont = font === 'regular' ? 'regular' : 'label';
+  try { localStorage.setItem(SITE_FONT_KEY, siteFont); } catch (e) { /* storage unavailable */ }
+  document.body.classList.toggle('tm-regular', siteFont === 'regular');
+  $('site-font-switch').checked = siteFont === 'regular';
+  markFonts();
+  if (!$('screen-editor').hidden) renderLive();
+}
+applySiteFont(siteFont);
+
+async function loadSiteSettings() {
+  const { status, data } = await api('/api/settings');
+  if (status === 200 && data.settings) applySiteFont(data.settings.font);
+}
+
+// The label's own choice is one switch: off follows the site default, on
+// uses the other font. (state.font '' = site default.)
+function otherFont() {
+  return siteFont === 'label' ? 'regular' : 'label';
+}
+
+function markFonts() {
+  const own = state.font === 'label' || state.font === 'regular' ? state.font : '';
+  const on = !!own && own !== siteFont;
+  const other = otherFont();
+  $('font-switch').checked = on;
+  $('font-switch-title').textContent = `Use the ${other} font`;
+  $('font-switch-title').className = `tm-switch-title tm-sample-${other}`;
+  $('font-switch-hint').textContent = on
+    ? `Notes and small text on this label use the ${other} font.`
+    : `Off: follows the site default, the ${siteFont} font (change it in Settings).`;
+}
+
+$('font-switch').addEventListener('change', (e) => {
+  state.font = e.target.checked ? otherFont() : '';
+  markFonts();
+  changed();
 });
 
 // ---- blocks ----
@@ -532,7 +892,7 @@ $('block-list').addEventListener('change', (e) => {
   renderLive();
 });
 
-$('block-list').addEventListener('click', (e) => {
+$('block-list').addEventListener('click', async (e) => {
   const btn = e.target.closest('[data-act]');
   if (!btn) return;
   const b = blockFromEvent(e);
@@ -552,8 +912,9 @@ $('block-list').addEventListener('click', (e) => {
     }
   } else if (act === 'remove') {
     const hasContent = b.label || b.url || b.text;
-    if (hasContent && !confirm('Remove this block?')) return;
-    blocks.splice(i, 1);
+    if (hasContent && !(await ask('Remove this block?', { ok: 'Remove', danger: true }))) return;
+    const at = blocks.indexOf(b);
+    if (at > -1) blocks.splice(at, 1);
     renderBlocks();
   } else if (act === 'reset-color') {
     b.color = '';
@@ -574,7 +935,7 @@ $('add-row').addEventListener('click', (e) => {
   if (!btn) return;
   const t = btn.getAttribute('data-add');
   const pg = page();
-  if (pg.blocks.length >= LIMITS.blocks) return alert(`A page can have at most ${LIMITS.blocks} blocks.`);
+  if (pg.blocks.length >= LIMITS.blocks) return tell(`A page can have at most ${LIMITS.blocks} blocks.`);
   const others = state.pages.filter((p) => p.id !== pg.id);
   const b = newBlock(t, t === 'menu' && others[0] ? others[0].id : '');
   pg.blocks.push(b);
@@ -589,54 +950,10 @@ $('add-row').addEventListener('click', (e) => {
 
 // ------------------------------------------------------------ open tag ---
 
-const dialog = $('open-dialog');
-
-$('open-btn').addEventListener('click', () => {
-  $('open-prefix').textContent = `${location.host}/`;
-  $('open-slug').value = '';
-  $('open-error').hidden = true;
-  if (dialog.showModal) dialog.showModal(); else dialog.setAttribute('open', '');
-  setTimeout(() => $('open-slug').focus(), 50);
-});
-$('open-cancel').addEventListener('click', () => dialog.close());
-$('open-slug').addEventListener('input', (e) => {
-  const v = e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/^.*\//, '');
-  if (v !== e.target.value) e.target.value = v;
-});
-
 function hasWork() {
   return state.pages.length > 1 || state.tagSlug || state.pages[0].title ||
     state.pages[0].blocks.some((b) => b.label || b.url || b.text);
 }
-
-$('open-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const slug = $('open-slug').value.trim();
-  const problem = slugProblem(slug, { isTag: true });
-  if (problem) {
-    $('open-error').textContent = problem;
-    $('open-error').hidden = false;
-    return;
-  }
-  if (hasWork() && state.loadedSlug !== slug && !confirm('Open this tag? Unsaved changes to the current one will be lost.')) return;
-  $('open-go').disabled = true;
-  $('open-go').textContent = 'Opening…';
-  const ok = await openTag(slug, (msg) => {
-    $('open-error').textContent = msg;
-    $('open-error').hidden = false;
-  });
-  $('open-go').disabled = false;
-  $('open-go').textContent = 'Open';
-  if (ok) dialog.close();
-});
-
-$('new-tag').addEventListener('click', () => {
-  if (hasWork() && !confirm('Start a new tag? Unsaved changes to the current one will be lost.')) return;
-  state = blankState();
-  saveDraft();
-  dialog.close();
-  openEditor();
-});
 
 async function openTag(slug, onError) {
   const { status, data } = await api(`/api/tag/${encodeURIComponent(slug)}`);
@@ -648,7 +965,6 @@ async function openTag(slug, onError) {
     return true;
   }
   if (status === 401 && data.login) {
-    if (dialog.open) dialog.close();
     afterLogin = () => openTag(slug, () => {});
     showLogin('Please unlock again.');
     return false;
@@ -694,24 +1010,45 @@ $('save-btn').addEventListener('click', async () => {
   btn.disabled = true;
   btn.textContent = 'Saving…';
   const sha = state.loadedSlug === slug ? state.sha : '';
-  let res = await api(`/api/tag/${encodeURIComponent(slug)}`, { method: 'PUT', body: JSON.stringify({ tag, sha }) });
+  const put = (address, body) => api(`/api/tag/${encodeURIComponent(address)}`, { method: 'PUT', body: JSON.stringify(body) });
+  let saveAt = slug;
+  let res = await put(slug, { tag, sha });
   if (res.status === 409 && res.data.exists) {
-    if (confirm(`A tag already exists at /${slug}. Replace it with this one?`)) {
-      res = await api(`/api/tag/${encodeURIComponent(slug)}`, { method: 'PUT', body: JSON.stringify({ tag, overwrite: true }) });
+    // The name is taken: save under the next free name, or take the name
+    // and move the label that was there to that next free name.
+    await refreshTaken();
+    const alt = nextFreeSlug(slug, new Set([...takenSlugs(), slug]));
+    const choice = await choose(
+      `/${slug} is already in use by another label.\n\nSave as /${alt} keeps that label as it is.\nReplace puts this one at /${slug} and moves the old one to /${alt}.`,
+      [
+        { label: `Save as /${alt}`, value: 'new', style: 'outline' },
+        { label: `Replace /${slug}`, value: 'replace', style: 'danger' }
+      ]
+    );
+    if (choice === 'new') {
+      saveAt = alt;
+      res = await put(alt, { tag });
+    } else if (choice === 'replace') {
+      res = await put(slug, { tag, replace: true });
     } else {
       btn.disabled = false;
       btn.textContent = 'Save tag';
-      return showSaveErrors(['Not saved. Pick a different tag address, or use Open tag to edit the existing one.']);
+      return showSaveErrors(['Not saved. Pick a different tag address, or choose Save as or Replace.']);
     }
   }
   btn.disabled = false;
   btn.textContent = 'Save tag';
 
   if (res.status === 200) {
-    state.loadedSlug = slug;
+    state.tagSlug = saveAt;
+    state.loadedSlug = saveAt;
     state.sha = res.data.sha || '';
+    state.dirty = false;
     writeDraft();
-    showSaved(url, await copied);
+    const movedTo = res.data.movedTo || '';
+    labels = labels.filter((l) => l.slug !== saveAt).concat({ slug: saveAt }, movedTo ? [{ slug: movedTo }] : []);
+    const finalUrl = `${location.origin}/${saveAt}`;
+    showSaved(finalUrl, saveAt === slug && (await copied), movedTo ? `The label that was at /${slug} moved to /${movedTo}.` : '');
     return;
   }
   if (res.status === 401 && res.data.login) {
@@ -719,14 +1056,23 @@ $('save-btn').addEventListener('click', async () => {
     return;
   }
   if (res.data.setup) return showSaveErrors(['The site is not set up yet:', res.data.error]);
+  if (res.data.github === 401) {
+    const box = $('save-errors');
+    box.innerHTML = tokenHelpHtml('bad');
+    box.hidden = false;
+    box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return;
+  }
   showSaveErrors([res.data.error || 'Could not save.', ...((res.data.errors || []).slice(1))]);
 });
 
 // ---------------------------------------------------------------- saved ---
 
-function showSaved(url, copied) {
+function showSaved(url, copied, note = '') {
   savedUrl = url;
   $('saved-url').textContent = url;
+  $('saved-moved').textContent = note;
+  $('saved-moved').hidden = !note;
   $('copied-pill').hidden = !copied;
   $('copy-btn').hidden = copied;
   const canNfc = 'NDEFReader' in window;
@@ -787,11 +1133,14 @@ async function start() {
   const wanted = new URLSearchParams(location.search).get('tag');
   const { status, data } = await api('/api/session');
   if (status === 200) {
+    loadSiteSettings();
     if (wanted && !slugProblem(wanted, { isTag: true }) && wanted !== state.loadedSlug) {
       openEditor();
       await openTag(wanted, (msg) => showSaveErrors([msg]));
-    } else {
+    } else if (wanted) {
       openEditor();
+    } else {
+      showHome();
     }
     return;
   }

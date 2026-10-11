@@ -1,67 +1,63 @@
-// GET /api/tag/<slug>  →  loads a tag straight from GitHub (always the latest)
-// PUT /api/tag/<slug>  { tag, sha?, overwrite? }  →  saves it to GitHub
+// GET    /api/tag/<slug>                          →  loads a tag straight from GitHub (always the latest)
+// PUT    /api/tag/<slug>  { tag, sha?, overwrite? } →  saves it to GitHub
+//                          { tag, replace: true }    →  saves it, moving the label already there to /<slug>-2
+// DELETE /api/tag/<slug>  { sha? }                  →  deletes it
 import { json } from '../../../lib/http.js';
 import { requireSession } from '../../../lib/auth.js';
-import { githubProblem, readTag, writeTag, GitHubError } from '../../../lib/github.js';
-import { slugProblem, validateTag, LIMITS } from '../../../public/assets/label.js';
+import { githubProblem } from '../../../lib/github.js';
+import { getLabel, saveLabel, replaceLabel, removeLabel, errorResponse, LabelError } from '../../../lib/labels.js';
+import { LIMITS } from '../../../public/assets/label.js';
 
-function checkSlug(params) {
-  const slug = String(params.slug || '');
-  return { slug, problem: slugProblem(slug, { isTag: true }) };
-}
-
-function fromGitHubError(e) {
-  if (e instanceof GitHubError) return json({ error: e.message }, e.status === 409 || e.status === 422 ? 409 : 502);
-  return json({ error: 'Could not reach GitHub. Try again in a minute.' }, 502);
-}
-
-export async function onRequestGet({ request, env, params }) {
+async function guard(request, env) {
   const denied = await requireSession(request, env);
   if (denied) return denied;
   const setup = githubProblem(env);
   if (setup) return json({ error: setup, setup: true }, 500);
-  const { slug, problem } = checkSlug(params);
-  if (problem) return json({ error: problem }, 400);
+  return null;
+}
 
+async function readBody(request) {
+  const raw = await request.text();
+  if (raw.length > LIMITS.fileBytes * 2) throw new LabelError(413, 'This tag is too large.');
+  try { return JSON.parse(raw || '{}') || {}; } catch (e) { throw new LabelError(400, 'The tag could not be read.'); }
+}
+
+export async function onRequestGet({ request, env, params }) {
+  const stop = await guard(request, env);
+  if (stop) return stop;
   try {
-    const found = await readTag(env, slug);
-    if (!found) return json({ error: `There is no tag at /${slug} yet.`, missing: true }, 404);
-    const { ok, errors, tag } = validateTag(found.tag);
-    return json({ slug, tag, sha: found.sha, warnings: ok ? [] : errors });
+    const { slug, tag, sha, warnings } = await getLabel(env, String(params.slug || ''));
+    return json({ slug, tag, sha, warnings });
   } catch (e) {
-    return fromGitHubError(e);
+    if (e instanceof LabelError && e.extra.missing) return json({ error: `There is no tag at /${params.slug} yet.`, missing: true }, 404);
+    return errorResponse(e);
   }
 }
 
 export async function onRequestPut({ request, env, params }) {
-  const denied = await requireSession(request, env);
-  if (denied) return denied;
-  const setup = githubProblem(env);
-  if (setup) return json({ error: setup, setup: true }, 500);
-  const { slug, problem } = checkSlug(params);
-  if (problem) return json({ error: problem }, 400);
-
-  const raw = await request.text();
-  if (raw.length > LIMITS.fileBytes * 2) return json({ error: 'This tag is too large.' }, 413);
-  let body;
-  try { body = JSON.parse(raw); } catch (e) { return json({ error: 'The tag could not be read.' }, 400); }
-
-  const { ok, errors, tag } = validateTag(body && body.tag);
-  if (!ok) return json({ error: errors[0], errors }, 400);
-
-  let sha = typeof body.sha === 'string' && /^[0-9a-f]{40}$/.test(body.sha) ? body.sha : '';
+  const stop = await guard(request, env);
+  if (stop) return stop;
   try {
-    if (!sha) {
-      // A new tag: make sure we never silently replace an existing one.
-      const existing = await readTag(env, slug);
-      if (existing) {
-        if (!body.overwrite) return json({ error: `A tag already exists at /${slug}.`, exists: true }, 409);
-        sha = existing.sha;
-      }
-    }
-    const newSha = await writeTag(env, slug, tag, sha);
-    return json({ ok: true, slug, sha: newSha, tag });
+    const body = await readBody(request);
+    if (body.replace === true) return json({ ok: true, ...(await replaceLabel(env, String(params.slug || ''), body.tag)) });
+    const saved = await saveLabel(env, String(params.slug || ''), body.tag, {
+      sha: typeof body.sha === 'string' ? body.sha : '',
+      overwrite: !!body.overwrite
+    });
+    return json({ ok: true, ...saved });
   } catch (e) {
-    return fromGitHubError(e);
+    return errorResponse(e);
+  }
+}
+
+export async function onRequestDelete({ request, env, params }) {
+  const stop = await guard(request, env);
+  if (stop) return stop;
+  try {
+    const body = await readBody(request);
+    await removeLabel(env, String(params.slug || ''), typeof body.sha === 'string' ? body.sha : '');
+    return json({ ok: true });
+  } catch (e) {
+    return errorResponse(e);
   }
 }

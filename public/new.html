@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow, noarchive">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#EFEEEA">
-<title>Tag maker</title>
+<title>Phygital label maker</title>
 <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/assets/label.css">
 <link rel="stylesheet" href="/assets/editor.css">
@@ -18,23 +18,117 @@
 
 <!-- Unlock -->
 <main id="screen-login" class="tm-login" hidden>
-  <h1 class="tm-tape tm-tape-xl" aria-label="Tag maker" data-emboss="Tag maker"></h1>
+  <h1 class="tm-name" aria-label="Phygital label maker">
+    <span class="tm-tape tm-tape-xl" data-emboss="Phygital"></span>
+    <span class="tm-tape tm-tape-md" data-emboss="Label maker"></span>
+  </h1>
   <form id="login-form" class="tm-card tm-login-card" novalidate>
     <label for="pw" class="tm-label">Password</label>
     <input id="pw" name="password" type="password" autocomplete="current-password" required class="tm-input tm-mono" placeholder="••••••••••••••••">
     <p id="login-error" class="tm-error" role="alert" hidden></p>
-    <button id="login-btn" type="submit" class="tm-btn tm-btn-dark">Unlock</button>
+    <button id="login-btn" type="submit" class="tm-tape tm-tape-btn" data-emboss="Unlock">Unlock</button>
     <p class="tm-hint">This phone stays unlocked for 30 days.</p>
   </form>
+</main>
+
+<!-- Main menu -->
+<main id="screen-home" class="tm-home" hidden>
+  <h1 class="tm-name" aria-label="Phygital label maker">
+    <span class="tm-tape tm-tape-xl" data-emboss="Phygital"></span>
+    <span class="tm-tape tm-tape-md" data-emboss="Label maker"></span>
+  </h1>
+
+  <div class="tm-tabs" role="tablist" aria-label="Main menu">
+    <button id="tab-labels" type="button" class="tm-tape tm-tab" role="tab" aria-selected="true" aria-controls="panel-labels" data-tab="labels" data-emboss="Labels">Labels</button>
+    <button id="tab-settings" type="button" class="tm-tape tm-tab" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings" data-emboss="Settings" tabindex="-1">Settings</button>
+  </div>
+
+  <div id="panel-labels" class="tm-panel" role="tabpanel" aria-labelledby="tab-labels">
+  <div id="token-notice" role="alert" hidden></div>
+  <div class="tm-stack-sm">
+    <button id="home-new" type="button" class="tm-tape tm-tape-btn tm-tape-new" data-emboss="+ New label">+ New label</button>
+    <button id="home-draft" type="button" class="tm-draft" hidden>
+      <span class="tm-draft-text"><strong>Unsaved changes</strong><span id="home-draft-name"></span></span>
+      <span class="tm-draft-go">Continue ›</span>
+    </button>
+  </div>
+
+  <section aria-labelledby="labels-title" class="tm-section">
+    <div class="tm-row-between">
+      <h2 id="labels-title" class="tm-label">Your labels</h2>
+      <span id="label-count" class="tm-count"></span>
+    </div>
+    <div id="label-list" class="tm-label-list" aria-live="polite"></div>
+  </section>
+
+  <button id="home-logout" type="button" class="tm-btn-link">Lock the phygital label maker on this phone</button>
+  </div>
+
+  <div id="panel-settings" class="tm-panel" role="tabpanel" aria-labelledby="tab-settings" hidden>
+  <section aria-labelledby="style-title" class="tm-card tm-stack">
+    <h2 id="style-title" class="tm-h2">Text style</h2>
+    <label class="tm-switch-row">
+      <span class="tm-switch-text">
+        <span class="tm-switch-title tm-sample-regular">Use the regular font</span>
+        <span class="tm-hint">For notes and small text on every label, and for the label maker. Off: label font.</span>
+      </span>
+      <input id="site-font-switch" type="checkbox" class="tm-switch">
+    </label>
+    <p id="site-font-status" class="tm-hint" role="status"></p>
+  </section>
+
+  <details id="claude-card" class="tm-card tm-collapse">
+    <summary class="tm-collapse-head">
+      <span class="tm-collapse-text"><span class="tm-h2">Connect to Claude</span><span class="tm-hint">Let Claude make labels for you.</span></span>
+      <svg class="tm-collapse-chev" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+    </summary>
+    <div class="tm-stack tm-collapse-body">
+    <p class="tm-hint tm-hint-lg">Describe an item, and Claude makes or edits its label with the manual, videos and notes.</p>
+    <div class="tm-row-between">
+      <h3 class="tm-label">Connector address</h3>
+      <span id="mcp-copied" class="tm-pill" hidden><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg>Copied</span>
+      <button id="mcp-copy" type="button" class="tm-pill tm-pill-btn">Copy</button>
+    </div>
+    <p id="mcp-url" class="tm-url"></p>
+    <ol class="tm-steps">
+      <li><span>1</span><span>In Claude, open <strong>Settings › Connectors</strong>.</span></li>
+      <li><span>2</span><span>Tap <strong>Add custom connector</strong>, name it <strong>Phygital labels</strong> and paste the address.</span></li>
+      <li><span>3</span><span>Tap <strong>Connect</strong>, then enter your password here and tap <strong>Allow</strong>.</span></li>
+      <li><span>4</span><span>Ask Claude, for example: “Make a label for my espresso machine with the manual and a descaling video.”</span></li>
+    </ol>
+    <a id="claude-connect" class="tm-tape tm-tape-btn tm-tape-claude" href="https://claude.ai/settings/connectors" target="_blank" rel="noopener" data-emboss="Connect to Claude">Connect to Claude</a>
+    <p class="tm-hint">Copies the address and opens Claude's connector settings. To disconnect Claude, use Sign out everywhere below.</p>
+    </div>
+  </details>
+
+  <section aria-labelledby="health-title" class="tm-card tm-stack">
+    <div class="tm-row-between">
+      <h2 id="health-title" class="tm-h2">Site health</h2>
+      <button id="health-refresh" type="button" class="tm-pill tm-pill-btn">Check</button>
+    </div>
+    <ul id="health-list" class="tm-health"></ul>
+  </section>
+
+  <section aria-labelledby="backup-title" class="tm-card tm-stack">
+    <h2 id="backup-title" class="tm-h2">Back up</h2>
+    <p class="tm-hint tm-hint-lg">Download every label in one file, to keep safe or move to another site.</p>
+    <a id="backup-link" class="tm-btn tm-btn-outline-lg" href="/api/backup" download>Download all labels</a>
+  </section>
+
+  <section aria-labelledby="signout-title" class="tm-card tm-stack">
+    <h2 id="signout-title" class="tm-h2">Sign out everywhere</h2>
+    <p class="tm-hint tm-hint-lg">Locks every phone and disconnects Claude, including this phone. Use it if a phone is lost or you want to cut off access. Takes effect in about a minute.</p>
+    <button id="signout-all" type="button" class="tm-btn tm-btn-danger-fill">Sign out everywhere</button>
+  </section>
+  </div>
 </main>
 
 <!-- Editor -->
 <main id="screen-editor" class="tm-editor" hidden>
   <header class="tm-header">
-    <div class="tm-tape tm-tape-sm" role="img" aria-label="Tag maker" data-emboss="Tag maker"></div>
-    <button id="open-btn" type="button" class="tm-btn-outline">
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h6l2 2h10v10H3z"/></svg>
-      Open tag
+    <button id="back-home" type="button" class="tm-btn-outline">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+      Your labels
     </button>
   </header>
 
@@ -74,6 +168,17 @@
     <p class="tm-color-line"><span id="color-dot" aria-hidden="true"></span><span id="color-text"></span> · letters switch to dark on light tape</p>
   </fieldset>
 
+  <div class="tm-field">
+    <span class="tm-label">Text style</span>
+    <label class="tm-switch-row">
+      <span class="tm-switch-text">
+        <span id="font-switch-title" class="tm-switch-title"></span>
+        <span id="font-switch-hint" class="tm-hint"></span>
+      </span>
+      <input id="font-switch" type="checkbox" class="tm-switch">
+    </label>
+  </div>
+
   <section aria-label="Blocks" class="tm-section tm-blocks-section">
     <div class="tm-row-between">
       <h2 class="tm-label">Blocks on this page</h2>
@@ -88,7 +193,6 @@
 
   <div id="save-errors" class="tm-save-errors" role="alert" hidden></div>
   <button id="save-btn" type="button" class="tm-btn tm-btn-dark tm-btn-save">Save tag</button>
-  <button id="logout-btn" type="button" class="tm-btn-link">Lock the tag maker on this phone</button>
 </main>
 
 <!-- Saved -->
@@ -104,6 +208,7 @@
       <button id="copy-btn" type="button" class="tm-pill tm-pill-btn" hidden>Copy</button>
     </div>
     <p id="saved-url" class="tm-url"></p>
+    <p id="saved-moved" class="tm-hint tm-hint-lg" hidden></p>
     <p class="tm-hint tm-hint-lg">Goes live in about a minute while the site updates.</p>
   </section>
 
@@ -135,25 +240,16 @@
   <div class="tm-stack-sm">
     <button id="edit-again" type="button" class="tm-btn tm-btn-outline-lg">Edit this tag</button>
     <button id="make-another" type="button" class="tm-btn tm-btn-plain">Make another tag</button>
+    <button id="saved-home" type="button" class="tm-btn tm-btn-plain">Back to your labels</button>
   </div>
 </main>
 
-<!-- Open an existing tag -->
-<dialog id="open-dialog" class="tm-dialog" aria-labelledby="open-title">
-  <form id="open-form" method="dialog" class="tm-stack" novalidate>
-    <h2 id="open-title" class="tm-h2">Open a tag</h2>
-    <div class="tm-field">
-      <label for="open-slug" class="tm-label">Tag address</label>
-      <div class="tm-addr">
-        <span id="open-prefix" class="tm-addr-prefix"></span>
-        <input id="open-slug" type="text" maxlength="40" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false">
-      </div>
-    </div>
-    <p id="open-error" class="tm-error" role="alert" hidden></p>
-    <button id="open-go" type="submit" class="tm-btn tm-btn-dark">Open</button>
-    <button id="new-tag" type="button" class="tm-btn tm-btn-outline-lg">Start a new tag</button>
-    <button id="open-cancel" type="button" class="tm-btn tm-btn-plain">Cancel</button>
-  </form>
+<!-- Questions and messages (the browser's own confirm() is blocked in some in-app browsers) -->
+<dialog id="ask-dialog" class="tm-dialog" aria-labelledby="ask-text">
+  <div class="tm-stack">
+    <p id="ask-text" class="tm-ask-text"></p>
+    <div id="ask-buttons" class="tm-stack-sm"></div>
+  </div>
 </dialog>
 
 </body>

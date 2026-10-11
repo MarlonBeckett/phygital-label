@@ -1,4 +1,4 @@
-/* Embossed label look. Shared by tag pages and the tag maker preview. */
+/* Embossed label look. Shared by tag pages and the phygital label maker preview. */
 
 @font-face {
   font-family: 'Impact Label';
@@ -39,6 +39,21 @@
   --dots: radial-gradient(rgba(0, 0, 0, 0.07) 1px, transparent 1.3px);
 }
 
+/* Reading text. A tag picks "label" (the default) or "regular" in the tag
+   maker. The label font has short capitals, so font-size-adjust scales it up
+   to read like the regular fonts. Addresses and URLs always stay in --mono:
+   the label font's all-caps letters would hide their real case. */
+:root, .lt-blocks {
+  --text-font: var(--label-font);
+  --text-adjust: cap-height 0.58;
+  --text-track: 0.04em;
+}
+.lt-regular {
+  --text-font: var(--mono);
+  --text-adjust: none;
+  --text-track: normal;
+}
+
 /* ---------- Tag page shell ---------- */
 
 html { -webkit-text-size-adjust: 100%; }
@@ -49,7 +64,10 @@ body.lt-page {
   background-color: var(--board);
   background-image: var(--dots);
   background-size: 7px 7px;
-  font-family: var(--mono);
+  font-family: var(--text-font);
+  font-size-adjust: var(--text-adjust);
+  letter-spacing: var(--text-track);
+  font-synthesis: none;
   color: var(--ink);
 }
 .lt-main {
@@ -80,6 +98,9 @@ body.lt-page {
 .lt-back svg { width: 18px; height: 18px; flex: none; }
 .lt-path {
   margin: auto 0 0;
+  font-family: var(--mono);
+  font-size-adjust: none;
+  letter-spacing: normal;
   text-align: center;
   font-size: 11px;
   color: #6A665F;
@@ -108,7 +129,9 @@ body.lt-page {
   flex-direction: column;
   align-items: center;
   gap: var(--gap);
-  font-family: var(--mono);
+  font-family: var(--text-font);
+  font-size-adjust: var(--text-adjust);
+  letter-spacing: var(--text-track);
   color: var(--ink);
 }
 .lt-blocks.lt-compact {
@@ -147,6 +170,8 @@ body.lt-page {
   display: inline-flex;
   flex-wrap: wrap;
   font-family: var(--label-font);
+  font-size-adjust: none;
+  letter-spacing: normal;
   line-height: 1;
 }
 .lt-letters > span { display: inline-block; white-space: pre; }
@@ -190,8 +215,8 @@ body.lt-page {
   min-height: var(--min-h);
   padding: var(--pad-s);
 }
-a.lt-strip:active, a.lt-menu:active { filter: brightness(1.12); }
-a.lt-strip:focus-visible, a.lt-menu:focus-visible, .lt-player:focus-visible, .lt-note a:focus-visible {
+a.lt-strip:active, a.lt-menu:active, a.lt-stack:active { filter: brightness(1.12); }
+a.lt-strip:focus-visible, a.lt-menu:focus-visible, a.lt-stack:focus-visible, .lt-player:focus-visible, .lt-note a:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 3px;
 }
@@ -218,6 +243,21 @@ a.lt-strip:focus-visible, a.lt-menu:focus-visible, .lt-player:focus-visible, .lt
     inset 0 -2px 0 rgba(0, 0, 0, 0.3),
     0 1px 1px rgba(0, 0, 0, 0.2);
 }
+/* A label too long for one line: one tape per line, stacked with a small gap. */
+.lt-stack {
+  max-width: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--gap) * 0.35);
+  text-decoration: none;
+}
+.lt-stack > .lt-title, .lt-stack > .lt-heading { margin: 0; }
+.lt-title-stack { margin-bottom: calc(var(--gap) * 0.55); }
+.lt-heading-stack { margin-top: calc(var(--gap) * 0.55); }
+.lt-menu.lt-stack { display: flex; max-width: calc(100% - 8px); }
+.lt-line { position: relative; display: inline-flex; max-width: 100%; }
 .lt-menu-icon { width: var(--icon); height: var(--icon); flex: none; opacity: 0.9; }
 
 .lt-note {

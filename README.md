@@ -4,13 +4,15 @@ Little web pages for the things you own. Hide an NFC sticker under an embossed l
 
 - **Free to run** on Cloudflare Pages, with no database and nothing to update.
 - **Make and edit tags from your phone** at `yoursite.pages.dev/new`, behind a password.
+- **Or let Claude make them:** connect Claude once, then ask for a label in plain words.
 - **Each tag is one small file** in your own private GitHub repo.
 - Plain HTML, CSS and JavaScript. No frameworks, no build step, nothing to install.
 
 ```
 yoursite.pages.dev/camera            ← a tag's main page
 yoursite.pages.dev/camera/settings   ← a sub-page (a "menu" strip opens it)
-yoursite.pages.dev/new               ← the tag maker (password protected)
+yoursite.pages.dev/new               ← the phygital label maker (password protected)
+yoursite.pages.dev/mcp               ← the Claude connector address
 ```
 
 There is an example tag at `/example` so you can see what a page looks like.
@@ -45,15 +47,15 @@ Remember the name shown at the top of your new repo, written like `your-name/my-
    - **Build output directory:** `public`
 7. Click **Save and Deploy**. After a minute your site is live at `https://project-name.pages.dev`.
 
-### 3. Create the GitHub key the tag maker uses to save
+### 3. Create the GitHub key the phygital label maker uses to save
 
-The tag maker saves your tags into your repo. To do that it needs a key (a "fine-grained token") that can only touch that one repo.
+The phygital label maker saves your tags into your repo. To do that it needs a key (a "fine-grained token") that can only touch that one repo.
 
 1. On GitHub, click your profile picture (top right), then **Settings**.
 2. Scroll down the left menu and click **Developer settings**.
 3. Click **Personal access tokens**, then **Fine-grained tokens**, then **Generate new token**.
 4. Fill it in:
-   - **Token name:** `tag maker`
+   - **Token name:** `phygital label maker`
    - **Expiration:** choose the longest option offered (pick **No expiration** if you see it). If you have to choose an end date, put a reminder in your calendar to make a new token before then.
    - **Repository access:** **Only select repositories**, then choose `my-tags`.
    - **Permissions → Repository permissions → Contents:** set to **Read and write**. ("Metadata: Read-only" is added automatically. That's fine.) Leave everything else alone.
@@ -66,7 +68,7 @@ The tag maker saves your tags into your repo. To do that it needs a key (a "fine
 
 | Name | Value |
 | --- | --- |
-| `ADMIN_PASSWORD` | A password for the tag maker. **At least 16 characters.** A few random words works well, for example `pickle-lantern-orbit-velvet`. |
+| `ADMIN_PASSWORD` | A password for the phygital label maker. **At least 16 characters.** A few random words works well, for example `pickle-lantern-orbit-velvet`. |
 | `GITHUB_TOKEN` | The `github_pat_…` token from step 3. |
 | `GITHUB_REPO` | Your repo's name, like `your-name/my-tags` (no `https://github.com/`). |
 
@@ -86,11 +88,12 @@ To swap in a fresh copy: download the font, then on GitHub open the `public/font
 ### 6. Make your first tag
 
 1. On your phone, open `https://project-name.pages.dev/new`.
-2. Enter your `ADMIN_PASSWORD` and tap **Unlock**. The phone stays unlocked for 30 days.
-3. Fill in the tag:
+2. Enter your `ADMIN_PASSWORD` and tap **Unlock**. The phone stays unlocked for 30 days, and opens on the main menu: your labels, **+ New label**, and **Connect to Claude**.
+3. Tap **+ New label** and fill it in:
    - **Page title:** the name of the item, for example `Camera`.
    - **Tag address:** a short name in lowercase, for example `camera`. This becomes `project-name.pages.dev/camera`.
    - **Page tape color:** pick a preset, or tap **Custom**.
+   - **Text style:** off, the tag follows the site's text style from **Settings** (the label font, unless you changed it). Turn the switch on to use the other font for this tag's notes and small text. Titles and strips are always label tape.
    - **Blocks:** use the buttons under **Add a block** to add strips. Use the arrows to reorder and ✕ to remove.
 4. Tap **Save tag**. The address is copied for you, and the page goes live about a minute later.
 5. Write it onto the NFC sticker:
@@ -98,7 +101,32 @@ To swap in a fresh copy: download the font, then on GitHub open the `public/font
    - **iPhone (or anything else):** install the free **NFC Tools** app. Tap **Write → Add a record → URL**, paste the address, tap **OK**, then **Write**, and hold the sticker near the top of the phone.
 6. Once it works, **lock the tag** (NFC Tools → **Other** → **Lock tag**) so nobody can overwrite it. Locking is permanent, but you can still change the page anytime, because the sticker only holds the address.
 
-To change a tag later, open `/new`, tap **Open tag**, and type its address.
+To change or delete a tag later, open `/new` and use **Edit** or the bin next to it on the main menu.
+
+### 7. Connect Claude (optional)
+
+Claude can then list, make, change and delete labels for you.
+
+1. Open `/new`. Under **Connect to Claude**, tap **Copy** (or **Connect to Claude**, which copies the address and opens Claude's settings).
+2. In Claude, open **Settings › Connectors**, tap **Add custom connector**, name it `Phygital labels`, and paste the address (`https://project-name.pages.dev/mcp`).
+3. Tap **Connect**. Your site opens and asks whether to allow Claude. Enter your `ADMIN_PASSWORD` if asked and tap **Allow**.
+4. Ask Claude, for example: *"Make a label for my espresso machine with the manual and a descaling video."* It replies with the address to write on the sticker.
+
+Claude Code works too: `claude mcp add --transport http phygital-labels https://project-name.pages.dev/mcp`.
+
+To disconnect Claude, use **Settings › Sign out everywhere**.
+
+### Settings
+
+The **Settings** tab on the main menu has:
+
+- **Text style:** a switch for the regular (easier to read) font instead of the label font, for every label that hasn't switched its own, and for the phygital label maker's screens. Labels switch over about a minute after you change it.
+- **Connect to Claude:** tap to open the connector address and steps (above).
+- **Site health:** checks that GitHub is connected and warns when your GitHub token is about to expire, so you know to make a new one before saving stops working.
+- **Back up:** downloads every label in one JSON file.
+- **Sign out everywhere:** after about a minute, every phone (including yours) needs the password again and Claude has to be reconnected. Use it if a phone is lost.
+
+Settings are saved in `public/tags/_settings.json` in your repo. The underscore keeps it from ever being a tag address, and the file is never shown on the website.
 
 ---
 
@@ -114,6 +142,8 @@ To change a tag later, open `/new`, tap **Open tag**, and type its address.
 
 Link, Menu and Heading strips can each have their own color. Letters switch to dark ink on light tape automatically.
 
+Addresses and links always show in a plain monospace font, even with the label font on, because the label font only has capital letters and would hide the real case.
+
 ## Privacy
 
 - No page lists your tags. Someone has to know (or tap) the exact address.
@@ -125,10 +155,10 @@ Link, Menu and Heading strips can each have their own color. Letters switch to d
 
 ```
 public/                  what the website serves
-  new.html               the tag maker (/new)
+  new.html               the phygital label maker (/new)
   assets/label.js        draws the label tape, shared by pages and the live preview; also checks tags
   assets/label.css       the embossed look
-  assets/editor.*        the tag maker's screens
+  assets/editor.*        the phygital label maker's screens
   assets/page.js         loads a video when tapped
   fonts/                 fonts and their licences
   tags/<address>.json    one file per tag
@@ -137,8 +167,16 @@ functions/               small server programs (Cloudflare Pages Functions)
   [tag].js               draws /<tag>
   [tag]/[page].js        draws /<tag>/<page>
   api/login.js           checks the password, sets a signed 30-day cookie
-  api/tag/[slug].js      loads and saves tags through the GitHub API
-lib/                     shared server code (password check, GitHub, page shell)
+  api/tags.js            lists every tag for the main menu
+  api/settings.js        site settings and the health check
+  api/backup.js          downloads every tag in one file
+  api/reset-access.js    "Sign out everywhere"
+  _middleware.js         loads the site settings for every request
+  api/tag/[slug].js      loads, saves and deletes tags through the GitHub API
+  mcp.js                 the Claude connector (MCP server) at /mcp
+  oauth/*.js             Claude's sign-in: register, the Allow page, tokens
+  .well-known/*          tells Claude where to sign in
+lib/                     shared server code (password check, GitHub, labels, OAuth, MCP tools, page shell)
 ```
 
 When you save, the server checks everything again, then commits `public/tags/<address>.json` to your repo with the GitHub API. Cloudflare sees the new commit and redeploys the site. Pages are drawn on the server from those files, so they load fast and work without JavaScript.
@@ -149,12 +187,15 @@ When you save, the server checks everything again, then commits `public/tags/<ad
 - The site refuses to run with a password shorter than 16 characters.
 - All text is escaped before it's shown, and a strict Content-Security-Policy blocks injected scripts.
 - Only `http`/`https` links and YouTube videos are accepted.
+- Claude connects with OAuth 2.1 (PKCE required). Nothing is stored: client ids, codes and tokens are signed with a key made from `ADMIN_PASSWORD` and a counter in the settings file, which **Sign out everywhere** bumps (login cookies use the same counter). Access tokens last an hour and refresh tokens 90 days. The Allow page shows which site will receive access, and needs your password unless that phone is already unlocked.
+- Everything Claude sends goes through the same checks as the label maker.
 
 **Editing a tag file by hand** works too: open `public/tags/<address>.json` on GitHub and click the pencil. The format:
 
 ```json
 {
   "v": 1,
+  "font": "label",
   "pages": [
     { "slug": "", "title": "Camera", "color": "#161616", "blocks": [
       { "type": "link", "label": "Manual", "url": "https://example.com/manual" },
@@ -165,17 +206,17 @@ When you save, the server checks everything again, then commits `public/tags/<ad
 }
 ```
 
-The first page is the main page (`"slug": ""`). Addresses use lowercase letters, numbers and dashes. `new`, `api`, `assets`, `fonts`, `tags`, `robots`, `index`, `functions`, `admin` and `404` are reserved.
+`"font"` is `"label"` or `"regular"`; leave it out to follow the site default from Settings. The first page is the main page (`"slug": ""`). Addresses use lowercase letters, numbers and dashes. `new`, `api`, `assets`, `fonts`, `tags`, `robots`, `index`, `functions`, `admin`, `404`, `mcp` and `oauth` are reserved.
 
 ## Troubleshooting
 
 - **"ADMIN_PASSWORD must be at least 16 characters"** or **"… is not set"**: fix it in Cloudflare (step 4), then **Retry deployment**.
-- **"GitHub did not accept GITHUB_TOKEN"**: the token expired or was pasted wrong. Make a new one (step 3), update it in Cloudflare, and redeploy.
+- **"Your GitHub key has expired"** (or **"GitHub did not accept GITHUB_TOKEN"**): your labels and stickers keep working, but making and changing labels needs a new token. The label maker shows the steps when this happens, and warns you 14 days ahead: make a new token (step 3), replace `GITHUB_TOKEN` in Cloudflare, and retry the latest deployment.
 - **"GitHub could not find the repo"**: check `GITHUB_REPO` is exactly `your-name/my-tags`, and that the token was given access to that repo.
 - **Saved, but the page says "Nothing here"**: wait a minute for Cloudflare to finish redeploying. You can watch it on the project's **Deployments** tab.
 - **"Too many wrong tries"**: wait 15 minutes.
 
-**Free plan limits:** each save starts one Cloudflare deploy, and the free plan allows 500 a month. Pages can be viewed without limit, and the tag maker can be used about 100,000 times a day, which is plenty for personal use.
+**Free plan limits:** each save starts one Cloudflare deploy, and the free plan allows 500 a month. Pages can be viewed without limit, and the phygital label maker can be used about 100,000 times a day, which is plenty for personal use.
 
 ## Licence
 

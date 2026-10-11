@@ -1,5 +1,5 @@
 // Shared label logic: used by the tag pages (rendered on the server) and by
-// the live preview in the tag maker. Plain ES module, no dependencies.
+// the live preview in the phygital label maker. Plain ES module, no dependencies.
 
 export const PRESETS = [
   { name: 'Black', hex: '#161616' },
@@ -13,7 +13,7 @@ export const PRESETS = [
 export const DEFAULT_COLOR = '#161616';
 
 // Addresses that belong to the site itself and can never be a tag.
-export const RESERVED = ['new', 'api', 'assets', 'fonts', 'tags', 'robots', 'index', 'functions', 'admin', '404'];
+export const RESERVED = ['new', 'api', 'assets', 'fonts', 'tags', 'robots', 'index', 'functions', 'admin', '404', 'mcp', 'oauth'];
 
 export const LIMITS = {
   slug: 40, title: 40, label: 32, videoTitle: 80, text: 2000, url: 2000,
@@ -22,10 +22,30 @@ export const LIMITS = {
 
 export const BLOCK_TYPES = ['link', 'text', 'video', 'menu', 'heading'];
 
+// Text style for a whole tag: the label font everywhere, or a regular font
+// for reading text (titles and strips always stay label tape). A tag without
+// its own choice follows the site default from Settings.
+export const FONTS = ['label', 'regular'];
+const isFont = (f) => FONTS.includes(f);
+export const fontOf = (tag, siteDefault = 'label') =>
+  (tag && isFont(tag.font) ? tag.font : isFont(siteDefault) ? siteDefault : 'label');
+
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 
 export function isSlug(s) {
   return typeof s === 'string' && SLUG_RE.test(s);
+}
+
+// The first free address after a taken one: "camera" → "camera-2", then
+// "camera-3"… ("camera-2" itself continues as "camera-3").
+export function nextFreeSlug(slug, taken) {
+  const base = slug.replace(/-\d{1,2}$/, '') || slug;
+  for (let n = 2; n < 1000; n++) {
+    const end = `-${n}`;
+    const candidate = base.slice(0, LIMITS.slug - end.length).replace(/-+$/, '') + end;
+    if (candidate !== slug && !taken.has(candidate) && !RESERVED.includes(candidate)) return candidate;
+  }
+  return '';
 }
 
 export function slugProblem(s, { isTag = false } = {}) {
@@ -148,6 +168,42 @@ function fitStyle(len, extra) {
   return `--n:${n};--x:${extra}px`;
 }
 
+// Long labels print as several tapes, one per line, like a real label maker.
+// Lines are picked by character count (not screen width) so pages work
+// without JavaScript and the editor preview matches the page. Up to this
+// many characters fit a phone at a comfortable size.
+const LINE_MAX = { title: 14, strip: 22, heading: 24 };
+
+// Splits text into as few lines as greedy wrapping needs, then evens them
+// out. A single word longer than `max` keeps its own line (it auto-shrinks).
+export function splitLines(text, max) {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+  const wrap = (width) => {
+    const lines = [];
+    let cur = '';
+    for (const w of words) {
+      if (cur && cur.length + 1 + w.length > width) { lines.push(cur); cur = w; } else cur = cur ? `${cur} ${w}` : w;
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  };
+  if (!words.length) return [''];
+  const n = wrap(max).length;
+  if (n === 1) return [words.join(' ')];
+  let width = Math.max(...words.map((w) => w.length));
+  while (wrap(width).length > n) width++;
+  return wrap(width);
+}
+
+const longest = (lines) => Math.max(...lines.map((l) => l.length));
+
+// Each extra line gets its own small tilt and shift, so it reads as a
+// separate label stuck under the one above.
+function lineTilt(key, i, base = 0) {
+  const r = rng(`${key}/${i}`);
+  return `transform:rotate(${(base + (r() - 0.5) * 2.4).toFixed(2)}deg) translateX(${((r() - 0.5) * 16).toFixed(1)}px)`;
+}
+
 function stripVars(color, key) {
   const c = ink(color);
   const r = rng(key);
@@ -171,6 +227,12 @@ function blockHtml(b, i, ctx) {
 
   if (b.type === 'heading') {
     const { c, tilt } = stripVars(color, key);
+    const lines = splitLines(b.label, LINE_MAX.heading);
+    if (lines.length > 1) {
+      return `<h2 class="lt-stack lt-heading-stack" aria-label="${esc(b.label)}">` + lines.map((ln, i) =>
+        `<span class="lt-heading lt-tape" style="background-color:${color};${lineTilt(key, i)}">${letters(ln, c)}</span>`
+      ).join('') + '</h2>';
+    }
     return `<h2 class="lt-heading lt-tape" aria-label="${esc(b.label)}" style="background-color:${color};transform:rotate(${tilt}deg)">${letters(b.label, c)}</h2>`;
   }
 
@@ -178,6 +240,17 @@ function blockHtml(b, i, ctx) {
     const { c, tilt, shift } = stripVars(color, key);
     const label = b.label || 'Link';
     const style = `background-color:${color};transform:rotate(${tilt}deg) translateX(${shift}px);${fitStyle(label.length + 1, 48)}`;
+    const lines = splitLines(label, LINE_MAX.strip);
+    if (lines.length > 1) {
+      const live = isHttpUrl(b.url);
+      const fit = fitStyle(longest(lines) + 1, 48);
+      const tapes = lines.map((ln, i) =>
+        `<span class="lt-strip lt-tape" style="background-color:${color};${lineTilt(key, i)};${fit}">` +
+        `${letters(ln, c, live && i === lines.length - 1 ? '<span class="lt-chev">›</span>' : '')}</span>`
+      ).join('');
+      if (!live) return `<span class="lt-stack lt-pending" role="img" aria-label="${esc(label)} (coming soon)">${tapes}</span>`;
+      return `<a class="lt-stack" href="${esc(b.url)}" aria-label="${esc(label)}">${tapes}</a>`;
+    }
     if (!isHttpUrl(b.url)) {
       // Placeholder: no address yet, so it shows but cannot be tapped.
       return `<span class="lt-strip lt-tape lt-pending" role="img" aria-label="${esc(label)} (coming soon)" style="${style}">${letters(label, c)}</span>`;
@@ -192,6 +265,17 @@ function blockHtml(b, i, ctx) {
     const href = target ? (target.slug ? `/${ctx.tagSlug}/${target.slug}` : `/${ctx.tagSlug}`) : '';
     const attrs = href ? `href="${esc(href)}" data-page="${esc(target.slug)}"` : '';
     const tag = href ? 'a' : 'span';
+    const lines = splitLines(label, LINE_MAX.strip);
+    if (lines.length > 1) {
+      // The second strip peeks out behind the last line only.
+      const fit = fitStyle(longest(lines), 80);
+      const last = lines.length - 1;
+      return `<${tag} class="lt-menu lt-stack" ${attrs} aria-label="${esc(label)} (opens a menu)">` + lines.map((ln, i) =>
+        `<span class="lt-line" style="${lineTilt(key, i)}">` +
+        (i === last ? `<span class="lt-menu-back" aria-hidden="true" style="background-color:${shade(color, 0.62)}"></span>` : '') +
+        `<span class="lt-strip lt-tape" style="background-color:${color};${fit}">${letters(ln, c)}${i === last ? MENU_ICON(c.fg) : ''}</span></span>`
+      ).join('') + `</${tag}>`;
+    }
     return `<${tag} class="lt-menu" ${attrs} aria-label="${esc(label)} (opens a menu)" style="transform:rotate(${tilt}deg) translateX(${shift}px)">` +
       `<span class="lt-menu-back" aria-hidden="true" style="background-color:${shade(color, 0.62)}"></span>` +
       `<span class="lt-strip lt-tape" style="background-color:${color};${fitStyle(label.length, 80)}">${letters(label, c)}${MENU_ICON(c.fg)}</span>` +
@@ -220,14 +304,28 @@ function blockHtml(b, i, ctx) {
   return '';
 }
 
+const BACK_ICON = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
+
+// The "‹ Main title" link at the top of a sub-page, back to the main page.
+export function backLinkHtml(tagSlug, mainTitle) {
+  return `<a class="lt-back" href="/${esc(tagSlug)}" data-page="">${BACK_ICON}${esc(mainTitle || 'Back')}</a>`;
+}
+
 // HTML for one page of a tag: the title tape plus its blocks.
-// tag: { pages: [...] }, page: one of tag.pages, opts: { tagSlug, compact }
+// tag: { pages: [...] }, page: one of tag.pages, opts: { tagSlug, compact, siteFont }
 export function renderPageHtml(tag, page, opts = {}) {
   const color = normColor(page.color) || DEFAULT_COLOR;
   const ctx = { color, pages: tag.pages || [], tagSlug: opts.tagSlug || '' };
   const title = page.title || '';
-  let html = `<div class="lt-blocks${opts.compact ? ' lt-compact' : ''}">`;
-  if (title) {
+  let html = `<div class="lt-blocks${opts.compact ? ' lt-compact' : ''}${fontOf(tag, opts.siteFont) === 'regular' ? ' lt-regular' : ''}">`;
+  const titleLines = splitLines(title, LINE_MAX.title);
+  if (title && titleLines.length > 1) {
+    const c = ink(color);
+    const fit = fitStyle(longest(titleLines), 56);
+    html += `<h1 class="lt-stack lt-title-stack" aria-label="${esc(title)}">` + titleLines.map((ln, i) =>
+      `<span class="lt-title lt-tape" style="background-color:${color};${fit};${lineTilt(title, i, -1.3)}">${letters(ln, c)}</span>`
+    ).join('') + '</h1>';
+  } else if (title) {
     const c = ink(color);
     html += `<h1 class="lt-title lt-tape" aria-label="${esc(title)}" style="background-color:${color};${fitStyle(title.length, 56)}">${letters(title, c)}</h1>`;
   }
@@ -314,7 +412,7 @@ export function validateTag(input) {
     });
   });
 
-  const tag = { v: 1, pages };
+  const tag = { v: 1, ...(isFont(input.font) ? { font: input.font } : {}), pages };
   if (errors.length === 0 && new TextEncoder().encode(JSON.stringify(tag)).length > LIMITS.fileBytes) {
     fail('This tag is too large. Remove some text or blocks.');
   }
