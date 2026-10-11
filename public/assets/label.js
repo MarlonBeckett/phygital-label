@@ -45,7 +45,7 @@ export const FILE_REF_RE = /^[a-z0-9]{16}\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 export const isFileRef = (ref) => typeof ref === 'string' && FILE_REF_RE.test(ref);
 
 // Types a browser would run as a web page or script on this site's address.
-// They can only be private uploads, and always download.
+// They can't be uploaded.
 export const RISKY_EXTENSIONS = ['html', 'htm', 'xhtml', 'shtml', 'xht', 'svg', 'svgz', 'xml', 'xsl', 'xslt', 'js', 'mjs', 'cjs', 'es', 'wasm', 'swf', 'php'];
 
 export function fileExtension(name) {
@@ -61,9 +61,10 @@ const KINDS = {
   text: ['txt', 'csv', 'md', 'json', 'log']
 };
 
-// Files that can be public: ones browsers show safely (KINDS below) plus
-// common download-only types. Anything else (XML-like feeds, unknown or no
-// extension) can only be private, so nothing on the site can render as a page.
+// Files that can be uploaded (and so are public): ones browsers show safely
+// (KINDS below) plus common download-only types. Anything else (XML-like
+// feeds, unknown or no extension) is refused, so nothing on the site can
+// render as a page.
 const DOWNLOADS = [
   'zip', '7z', 'rar', 'gz', 'tgz', 'tar', 'bz2', 'xz',
   'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'pages', 'numbers', 'key', 'epub',
@@ -429,7 +430,7 @@ function blockHtml(b, i, ctx) {
 
   if (b.type === 'file') {
     // An uploaded file: images and media play inline, anything else opens
-    // from a strip. A missing or private file shows as "coming soon".
+    // from a strip. A deleted file shows as "coming soon".
     const ref = isFileRef(b.file) && !ctx.missingFiles.has(b.file) ? b.file : '';
     const href = ref ? ctx.fileUrl(ref) : '';
     const name = ref ? ref.split('/')[1] : '';
@@ -467,7 +468,7 @@ export function renderPageHtml(tag, page, opts = {}) {
     visitorEdit: !!opts.visitorEdit, // the live page shows Edit buttons; the preview a badge
     // The editor previews files through the API (they're live there at once).
     fileUrl: opts.fileUrl || ((ref) => `/files/${ref}`),
-    missingFiles: opts.missingFiles || new Set() // deleted or private: shown as "coming soon"
+    missingFiles: opts.missingFiles || new Set() // deleted: shown as "coming soon"
   };
   const title = page.title || '';
   let html = `<div class="lt-blocks${opts.compact ? ' lt-compact' : ''}${fontOf(tag, opts.siteFont) === 'regular' ? ' lt-regular' : ''}">`;

@@ -5,7 +5,7 @@
 import {
   PRESETS, DEFAULT_COLOR, LIMITS, esc, embossHtml, normColor, isHttpUrl, youtubeId,
   slugProblem, renderPageHtml, validateTag, ink, nextFreeSlug, backLinkHtml,
-  fileKind, formatBytes, MAX_FILE_BYTES, canBePublic, fileExtension
+  formatBytes, MAX_FILE_BYTES, canBePublic, fileExtension
 } from './label.js';
 
 const $ = (id) => document.getElementById(id);
@@ -449,21 +449,20 @@ $('label-list').addEventListener('click', async (e) => {
   const del = e.target.closest('[data-delete]');
   if (del) {
     const slug = del.getAttribute('data-delete');
-    const item = labels.find((l) => l.slug === slug);
-    // Files only this label uses go with it (the server works out the same list).
-    const own = filesLoaded ? files.filter((f) => !f.private && f.usedBy.length === 1 && f.usedBy[0] === slug) : [];
+    // All its files go with it.
+    const own = filesLoaded ? files.filter((f) => f.usedBy.includes(slug)) : [];
     const goes = own.length ? ` Its ${own.length === 1 ? 'file' : `${own.length} files`} (${own.map((f) => f.name).join(', ')}) will be deleted too.`
-      : ' Any files on it that no other label uses will be deleted too.';
+      : ' Any files on it will be deleted too.';
     if (!(await ask(`Delete /${slug}? Its page stops working, so any sticker pointing at it will show "Nothing here".${goes} This can't be undone here.`, { ok: 'Delete label', danger: true }))) return;
     del.disabled = true;
-    const { status, data } = await api(`/api/tag/${encodeURIComponent(slug)}`, { method: 'DELETE', body: JSON.stringify({ sha: item ? item.sha : '' }) });
+    const { status, data } = await api(`/api/tag/${encodeURIComponent(slug)}`, { method: 'DELETE', body: '{}' });
     del.disabled = false;
     if (status === 401 && data.login) return showLogin('Please unlock again.');
     if (status !== 200) return tell(data.error || 'Could not delete that label.');
     if (state.loadedSlug === slug) { state.loadedSlug = ''; state.sha = ''; saveDraft(); }
     labels = labels.filter((l) => l.slug !== slug);
     renderLabels();
-    if (filesLoaded) loadFiles(false); // its files may be gone too
+    if (filesLoaded) loadFiles(); // its files are gone too
   }
 });
 
@@ -483,9 +482,7 @@ function showTab(name) {
     t.tabIndex = on ? 0 : -1;
   });
   $('panel-labels').hidden = name !== 'labels';
-  $('panel-files').hidden = name !== 'files';
   $('panel-settings').hidden = name !== 'settings';
-  if (name === 'files') loadFiles();
   if (name === 'settings') {
     $('claude-card').open = false; // always starts collapsed
     $('site-font-status').textContent = '';
@@ -495,36 +492,17 @@ function showTab(name) {
 
 // ---------------------------------------------------------------- files ---
 
-// Uploaded files (public and private). Loaded with the Files tab and when the
-// editor opens (the File block lists the public ones).
+// Uploaded files, loaded when the editor opens: the File card marks files
+// that are gone, and deleting a label names the files that go with it.
 let files = [];
 let filesLoaded = false;
 
-const fileUrl = (f, download = false) =>
-  `/api/file/${f.ref.split('/').map(encodeURIComponent).join('/')}?private=${f.private ? 1 : 0}${download ? '&download=1' : ''}`;
-const publicUrl = (f) => `${location.origin}/files/${f.ref}`;
-
-const FILE_ICONS = {
-  image: 'M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5M15 9.5h.01',
-  video: 'M3 6h13v12H3zM16 10l5-3v10l-5-3',
-  audio: 'M9 18V6l10-2v12M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM19 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z',
-  pdf: 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h6',
-  text: 'M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 15h7M9 18h4',
-  risky: 'M12 3l9 16H3zM12 10v4M12 17h.01',
-  other: 'M6 3h9l4 4v14H6zM14 3v5h5'
-};
-
-async function loadFiles(render = true) {
-  if (render) fileListMessage('Loading your files…');
+async function loadFiles() {
   const { status, data } = await api('/api/files');
   if (status === 401 && data.login) return showLogin('Please unlock again.');
-  if (status !== 200) {
-    if (render) fileListMessage(data.error || 'Could not load your files.');
-    return;
-  }
+  if (status !== 200) return;
   files = data.files || [];
   filesLoaded = true;
-  if (render) renderFiles();
   if (!$('screen-editor').hidden) { refreshFileBlocks(); renderLive(); }
 }
 
@@ -540,56 +518,17 @@ function refreshFileBlocks() {
   });
 }
 
-function fileListMessage(text) {
-  $('file-count').textContent = '';
-  $('file-list').innerHTML = `<div class="tm-empty"><p class="tm-hint tm-hint-lg">${esc(text)}</p></div>`;
-}
-
-function fileMeta(f) {
-  const where = f.private ? 'Private: only you' : f.usedBy.length ? `Public, on ${f.usedBy.map((s) => `/${s}`).join(', ')}` : 'Public, not on a label yet';
-  return `${formatBytes(f.size)} · ${where}`;
-}
-
-function renderFiles() {
-  const n = files.length;
-  $('file-count').textContent = n === 1 ? '1 file' : `${n} files`;
-  if (!n) return fileListMessage('No files yet. Upload a manual, a photo, a receipt…');
-  $('file-list').innerHTML = files.map((f) => {
-    const thumb = f.kind === 'image'
-      ? `<img class="tm-file-thumb" src="${esc(fileUrl(f))}" alt="" loading="lazy">`
-      : `<span class="tm-file-thumb tm-file-icon">${svg(FILE_ICONS[f.kind] || FILE_ICONS.other, 22, 1.8)}</span>`;
-    return `<div class="tm-item tm-file" data-ref="${esc(f.ref)}">` +
-      `<button type="button" class="tm-file-main" data-file-act="view" aria-label="View ${esc(f.name)}">${thumb}` +
-      `<span class="tm-file-text"><span class="tm-file-name">${esc(f.name)}</span><span class="tm-file-meta">${esc(fileMeta(f))}</span></span></button>` +
-      `<div class="tm-item-actions">` +
-      `<button type="button" class="tm-btn-outline tm-btn-sm" data-file-act="view">View</button>` +
-      `<button type="button" class="tm-btn-outline tm-btn-sm" data-file-act="toggle">${f.private ? 'Make public' : 'Make private'}</button>` +
-      (f.private ? '' : `<button type="button" class="tm-btn-outline tm-btn-sm" data-file-act="copy">Copy link</button>`) +
-      `<button type="button" class="tm-icon-btn tm-remove" data-file-act="delete" aria-label="Delete ${esc(f.name)}">${svg('M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3', 20, 2)}</button>` +
-      `</div></div>`;
-  }).join('');
-}
-
-// Uploads one picked file. `visibility`: 'ask' (Files tab), or 'public' (File block).
-async function uploadPicked(file, visibility, statusEl) {
+// Uploads one picked file (from a File card). Every upload is public: it's
+// on a label, so anyone with the sticker can open it.
+async function uploadPicked(file, statusEl) {
   if (!file) return null;
   if (file.size > MAX_FILE_BYTES) {
     await tell(`${file.name} is ${formatBytes(file.size)}. Files can be up to ${formatBytes(MAX_FILE_BYTES)}.`);
     return null;
   }
-  const kind = fileExtension(file.name) ? `.${fileExtension(file.name)} files` : 'Files without an extension';
-  const publicOk = canBePublic(file.name);
-  let isPrivate = false;
-  if (visibility === 'ask') {
-    const choice = await choose(
-      `Who can see ${file.name}?\n\nPublic files can go on labels, for anyone who taps the sticker to open.\nPrivate files only show here, after unlocking.` +
-      (publicOk ? '' : `\n\n${kind} can only be private: browsers could open them as web pages on your site.`),
-      [...(publicOk ? [{ label: 'Public', value: 'public', style: 'outline' }] : []), { label: 'Private (only me)', value: 'private', style: 'dark' }]
-    );
-    if (!choice) return null;
-    isPrivate = choice === 'private';
-  } else if (!publicOk) {
-    await tell(`${kind} can't go on a label (browsers could open them as web pages on your site). Upload it as a private file in the Files tab instead.`);
+  if (!canBePublic(file.name)) {
+    const kind = fileExtension(file.name) ? `.${fileExtension(file.name)} files` : 'Files without an extension';
+    await tell(`${kind} can't be uploaded: browsers could open them as web pages on your site. Put it in a .zip first.`);
     return null;
   }
   statusEl.textContent = `Uploading ${file.name}…`;
@@ -608,7 +547,7 @@ async function uploadPicked(file, visibility, statusEl) {
   const res = await fetch('/api/files', {
     method: 'POST',
     credentials: 'same-origin',
-    headers: { 'X-File-Name': encodeURIComponent(file.name), 'X-File-Private': isPrivate ? '1' : '0', 'Content-Type': 'text/plain' },
+    headers: { 'X-File-Name': encodeURIComponent(file.name), 'Content-Type': 'text/plain' },
     body: base64
   }).catch(() => null);
   let data = {};
@@ -619,99 +558,10 @@ async function uploadPicked(file, visibility, statusEl) {
     await tell(data.error || 'Could not upload that file.');
     return null;
   }
-  statusEl.textContent = isPrivate
-    ? `Uploaded ${data.file.name} (private).`
-    : `Uploaded ${data.file.name}. Its public link works in about a minute, once the site updates.`;
+  statusEl.textContent = `Uploaded ${data.file.name}. Save the label to put it on the page.`;
   files = files.filter((f) => f.ref !== data.file.ref).concat(data.file).sort((a, b) => a.name.localeCompare(b.name));
   return data.file;
 }
-
-$('files-upload').addEventListener('change', async (e) => {
-  const file = e.target.files && e.target.files[0];
-  e.target.value = '';
-  if (await uploadPicked(file, 'ask', $('upload-status'))) renderFiles();
-});
-
-$('file-list').addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-file-act]');
-  if (!btn) return;
-  const ref = btn.closest('[data-ref]').getAttribute('data-ref');
-  const f = files.find((x) => x.ref === ref);
-  if (!f) return;
-  const act = btn.getAttribute('data-file-act');
-  if (act === 'view') return openViewer(f);
-  if (act === 'copy') {
-    try { await navigator.clipboard.writeText(publicUrl(f)); btn.textContent = 'Copied'; } catch (err) { await tell(publicUrl(f)); }
-    return;
-  }
-  const onLabels = f.usedBy.length ? `\n\nIt's on ${f.usedBy.map((s) => `/${s}`).join(', ')}, which will show it as "coming soon".` : '';
-  const oldCopies = f.private ? '' : '\n\nAnyone who already has its link may still reach copies on older versions of the site for a while.';
-  if (act === 'toggle') {
-    const toPrivate = !f.private;
-    if (toPrivate && !(await ask(`Make ${f.name} private? From now on only you can open it here.${onLabels}${oldCopies}`, { ok: 'Make private' }))) return;
-    btn.disabled = true;
-    const { status, data } = await api(`/api/file/${ref}`, { method: 'PATCH', body: JSON.stringify({ wasPrivate: f.private, private: toPrivate }) });
-    btn.disabled = false;
-    if (status !== 200) return tell(data.error || 'Could not change that file.');
-    f.private = toPrivate;
-    renderFiles();
-    return;
-  }
-  if (act === 'delete') {
-    if (!(await ask(`Delete ${f.name}? This can't be undone here.${onLabels}${oldCopies}`, { ok: 'Delete file', danger: true }))) return;
-    btn.disabled = true;
-    const { status, data } = await api(`/api/file/${ref}?private=${f.private ? 1 : 0}`, { method: 'DELETE' });
-    btn.disabled = false;
-    if (status !== 200 && !data.missing) return tell(data.error || 'Could not delete that file.');
-    files = files.filter((x) => x.ref !== ref);
-    renderFiles();
-  }
-});
-
-// ---- viewer ----
-
-async function openViewer(f) {
-  const body = $('viewer-body');
-  const src = fileUrl(f);
-  $('viewer-name').textContent = f.name;
-  $('viewer-open').href = src;
-  $('viewer-open').hidden = f.kind === 'risky' || f.kind === 'other';
-  $('viewer-download').href = fileUrl(f, true);
-  $('viewer-download').setAttribute('download', f.name);
-  if (f.kind === 'image') body.innerHTML = `<img src="${esc(src)}" alt="${esc(f.name)}">`;
-  else if (f.kind === 'pdf') body.innerHTML = `<iframe src="${esc(src)}" title="${esc(f.name)}"></iframe>`;
-  else if (f.kind === 'video' || f.kind === 'audio') {
-    // Loaded whole, then played from memory: iPhones won't stream media
-    // from an address that doesn't support partial downloads.
-    body.innerHTML = '<p class="tm-hint tm-hint-lg">Loading…</p>';
-    fetch(src, { credentials: 'same-origin' }).then((r) => (r.ok ? r.blob() : Promise.reject())).then((blob) => {
-      if (!$('viewer').open || $('viewer-name').textContent !== f.name) return;
-      viewerObjectUrl = URL.createObjectURL(blob);
-      const el = document.createElement(f.kind);
-      el.src = viewerObjectUrl;
-      el.controls = true;
-      if (f.kind === 'video') el.playsInline = true;
-      body.replaceChildren(el);
-    }, () => { body.innerHTML = '<p class="tm-hint tm-hint-lg">Couldn\'t load it. Try Download instead.</p>'; });
-  }
-  else if (f.kind === 'text') {
-    body.innerHTML = '<pre class="tm-viewer-text">Loading…</pre>';
-    fetch(src, { credentials: 'same-origin' }).then((r) => r.text()).then((t) => { body.querySelector('pre').textContent = t; }, () => {});
-  } else {
-    body.innerHTML = `<p class="tm-hint tm-hint-lg">This kind of file can't be shown here. ${f.kind === 'risky' ? 'It could run code, so it only ever downloads.' : 'Download it to open it.'}</p>`;
-  }
-  $('viewer').showModal();
-}
-
-let viewerObjectUrl = '';
-
-function closeViewer() {
-  $('viewer').close();
-  $('viewer-body').innerHTML = ''; // stops any playing video or audio
-  if (viewerObjectUrl) { URL.revokeObjectURL(viewerObjectUrl); viewerObjectUrl = ''; }
-}
-$('viewer-close').addEventListener('click', closeViewer);
-$('viewer').addEventListener('cancel', (e) => { e.preventDefault(); closeViewer(); });
 
 // ------------------------------------------------------------- settings ---
 
@@ -793,7 +643,7 @@ document.querySelector('.tm-tabs').addEventListener('click', (e) => {
 });
 document.querySelector('.tm-tabs').addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-  const order = ['labels', 'files', 'settings'];
+  const order = ['labels', 'settings'];
   const now = order.findIndex((n) => $(`tab-${n}`).getAttribute('aria-selected') === 'true');
   const next = order[(now + (e.key === 'ArrowRight' ? 1 : order.length - 1)) % order.length];
   showTab(next);
@@ -829,7 +679,7 @@ function openEditor() {
   show('screen-editor');
   renderAll();
   refreshTaken();
-  loadFiles(false); // the File block lists your public files
+  loadFiles();
 }
 
 // Keeps the list of used addresses fresh, so the address field can say
@@ -889,9 +739,9 @@ function renderLive() {
       renderPageHtml(data, pageData, {
         tagSlug: state.tagSlug || 'tag', compact: true, siteFont,
         missingFiles: filesLoaded ? new Set(pageData.blocks.flatMap((b) => (b.type === 'file' ? [b.file] : b.type === 'files' ? b.files : []))
-          .filter((ref) => ref && !files.some((f) => !f.private && f.ref === ref))) : undefined,
+          .filter((ref) => ref && !files.some((f) => f.ref === ref))) : undefined,
         // Through the API: a file uploaded a moment ago isn't on the site yet.
-        fileUrl: (ref) => `/api/file/${ref}?private=0`
+        fileUrl: (ref) => `/api/file/${ref}`
       })
     : '<p class="tm-preview-empty">Add a title or a block to see it here.</p>';
 
@@ -1123,25 +973,19 @@ function blockCard(b, i, n) {
   }
   if (t === 'file') {
     const name = (ref) => ref.split('/')[1] || ref;
-    const known = (ref) => files.some((f) => !f.private && f.ref === ref);
+    const known = (ref) => files.some((f) => f.ref === ref);
     if (b.files.length) {
       h += '<ul class="tm-stack-list">' + b.files.map((ref) =>
         `<li><span class="tm-stack-name">${esc(name(ref))}${filesLoaded && !known(ref) ? ' <em>(not available)</em>' : ''}</span>` +
-        `<button type="button" class="tm-icon-btn tm-remove" data-act="stack-remove" data-ref="${esc(ref)}" aria-label="Take ${esc(name(ref))} off this block">${svg('M6 6l12 12M18 6L6 18')}</button></li>`
+        `<button type="button" class="tm-icon-btn tm-remove" data-act="stack-remove" data-ref="${esc(ref)}" aria-label="Take ${esc(name(ref))} off (deleted when you save)">${svg('M6 6l12 12M18 6L6 18')}</button></li>`
       ).join('') + '</ul>';
     }
-    const addable = files.filter((f) => !f.private && !b.files.includes(f.ref));
-    const sel = `file-${b.id}`;
-    h += `<div class="tm-menu-row"><label for="${esc(sel)}">${b.files.length ? 'Add' : 'File'}</label><select id="${esc(sel)}" data-field="stack-add">`;
-    h += `<option value="" selected disabled>${b.files.length ? 'Add another public file' : 'Choose a public file'}</option>`;
-    h += addable.map((f) => `<option value="${esc(f.ref)}">${esc(f.name)} · ${esc(formatBytes(f.size))}</option>`).join('');
-    h += '</select></div>';
-    h += `<label class="tm-btn-outline tm-btn-sm tm-upload-inline">${svg('M12 16V4M6 10l6-6 6 6M4 20h16', 16, 2.2)}Upload a new file` +
+    h += `<label class="tm-btn-outline tm-btn-sm tm-upload-inline">${svg('M12 16V4M6 10l6-6 6 6M4 20h16', 16, 2.2)}${b.files.length ? 'Upload another file' : 'Upload a file'}` +
       `<input type="file" class="tm-visually-hidden" data-upload-for="${esc(b.id)}"></label>`;
     h += '<p class="tm-hint" data-msg="upload" role="status"></p>';
     h += filesLoaded && b.files.some((ref) => !known(ref))
-      ? '<p class="tm-error">A file marked "not available" was deleted or made private, so the page leaves it out.</p>'
-      : '<p class="tm-hint">Only public files can go on a label. With more than one file, people swipe through them.</p>';
+      ? '<p class="tm-error">A file marked "not available" was deleted, so the page leaves it out.</p>'
+      : `<p class="tm-hint">Up to ${formatBytes(MAX_FILE_BYTES)} each. A file you take off (×) is deleted when you save. With more than one file, people swipe through them.</p>`;
     h += `<label class="tm-switch-row tm-switch-inline"><span class="tm-switch-text"><span class="tm-switch-title">Anyone can download</span>` +
       `<span class="tm-hint">Adds a Download button for the file on screen.</span></span>` +
       `<input type="checkbox" class="tm-switch" data-field="downloads"${b.downloads ? ' checked' : ''}></label>`;
@@ -1208,7 +1052,7 @@ function blockFromEvent(e) {
 $('block-list').addEventListener('input', (e) => {
   const b = blockFromEvent(e);
   const field = e.target.getAttribute('data-field');
-  if (!b || !field || field === 'target' || field === 'stack-add') return; // handled on change
+  if (!b || !field || field === 'target') return; // handled on change
   if (field === 'color') {
     b.color = normColor(e.target.value);
     const card = cardFor(b);
@@ -1243,18 +1087,11 @@ $('block-list').addEventListener('input', (e) => {
 
 $('block-list').addEventListener('change', async (e) => {
   const b = blockFromEvent(e);
-  if (b && e.target.getAttribute('data-field') === 'stack-add') {
-    if (e.target.value && !b.files.includes(e.target.value) && b.files.length < LIMITS.stack) b.files.push(e.target.value);
-    edited();
-    renderBlocks();
-    renderLive();
-    return;
-  }
   if (b && e.target.hasAttribute('data-upload-for')) {
     const picked = e.target.files && e.target.files[0];
     e.target.value = '';
     const status = cardFor(b).querySelector('[data-msg="upload"]');
-    const up = await uploadPicked(picked, 'public', status);
+    const up = await uploadPicked(picked, status);
     if (!up) return;
     if (!b.files.length && !b.label) b.label = up.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').slice(0, LIMITS.videoTitle);
     if (!b.files.includes(up.ref)) b.files.push(up.ref);

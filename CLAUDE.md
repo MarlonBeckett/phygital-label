@@ -49,10 +49,12 @@ owner does not code: explain steps in plain language.
   `visitor-edit.js` and `visitor-upload.js` (no login; see `lib/visitor.js`
   for their limits). Visitor uploads commit the file and the label together
   via `commitChanges` (Git Data API) on top of the exact version read.
-- `lib/files.js` – uploads: public in `public/files/<id>/<name>` (served as
-  static files with their own strict CSP in `_headers`), private in `files/`
-  (never deployed; read through `/api/file/…`). HTML/SVG/JS-like types are
-  private-only and always download. Max 10 MB (Worker memory).
+- `lib/files.js` – uploads, all public, in `public/files/<id>/<name>` (served
+  as static files with their own strict CSP in `_headers`). HTML/SVG/JS-like
+  types are refused. Max 10 MB (Worker memory). There's no Files tab: files
+  are uploaded on a File card and live only on labels. `saveLabel` deletes
+  files no label uses in the same commit (`commitTag`); `removeLabel` deletes
+  all of a label's files, even shared ones.
 - `public/assets/page.js` – the public pages' script (YouTube, editable notes,
   file stack viewer and visitor uploads). `public/assets/stack.js` – swiping
   through a file stack (‹ ›, count, Download); also loaded by the editor preview.

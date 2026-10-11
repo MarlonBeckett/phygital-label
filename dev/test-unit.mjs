@@ -72,7 +72,7 @@ eq(formatBytes(1536 * 1024), '1.5 MB', 'format MB');
 }
 
 ok(canBePublic('a.pdf') && canBePublic('a.jpg') && canBePublic('a.zip') && canBePublic('a.docx'), 'viewable and download types can be public');
-ok(!canBePublic('a.html') && !canBePublic('a.svg') && !canBePublic('a.rss') && !canBePublic('a.xsd') && !canBePublic('a.es') && !canBePublic('noext'), 'web-page-like and unknown types are private-only');
+ok(!canBePublic('a.html') && !canBePublic('a.svg') && !canBePublic('a.rss') && !canBePublic('a.xsd') && !canBePublic('a.es') && !canBePublic('noext'), 'web-page-like and unknown types can\'t be uploaded');
 
 // --- file stacks
 {
@@ -89,7 +89,7 @@ ok(!canBePublic('a.html') && !canBePublic('a.svg') && !canBePublic('a.rss') && !
   const off = validateTag(tag({ ...stack, uploads: false })).tag;
   ok(!renderPageHtml(off, off.pages[0], { tagSlug: 'r1', visitorEdit: true }).includes('data-stack-upload'), 'no upload button when uploads are off');
   const gone = renderPageHtml(v.tag, v.tag.pages[0], { missingFiles: new Set(['abcdefghijklmnop/a.jpg']) });
-  ok(!gone.includes('a.jpg') && gone.includes('b.pdf'), 'deleted or private files drop out of the stack');
+  ok(!gone.includes('a.jpg') && gone.includes('b.pdf'), 'deleted files drop out of the stack');
   // Download and uploads are separate switches; several files swipe.
   ok(!live.includes('lt-download-btn') && !live.includes('data-downloads'), 'no Download button unless switched on');
   const dl = validateTag(tag({ ...stack, uploads: false, downloads: true })).tag;

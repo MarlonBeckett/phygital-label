@@ -1,6 +1,6 @@
-// GET  /api/files  →  every uploaded file (public and private) and which labels use it
-// POST /api/files  →  upload one file. Body: the file as base64 text. Headers:
-//                      X-File-Name (URI-encoded), X-File-Private ("1" for private)
+// GET  /api/files  →  every uploaded file and which labels use it
+// POST /api/files  →  upload one file. Body: the file as base64 text. Header:
+//                      X-File-Name (URI-encoded)
 import { json } from '../../lib/http.js';
 import { errorResponse, ownerGuard, LabelError } from '../../lib/labels.js';
 import { listFiles, uploadFile } from '../../lib/files.js';
@@ -26,7 +26,7 @@ export async function onRequestPost({ request, env }) {
     if ((length / 4) * 3 > MAX_FILE_BYTES + 2) throw new LabelError(413, `Files can be up to ${formatBytes(MAX_FILE_BYTES)}. This one is ${formatBytes((length / 4) * 3)}.`);
     let name = '';
     try { name = decodeURIComponent(request.headers.get('X-File-Name') || ''); } catch (e) { /* cleaned in uploadFile */ }
-    const file = await uploadFile(env, name, request.body, length, request.headers.get('X-File-Private') === '1');
+    const file = await uploadFile(env, name, request.body, length);
     return json({ ok: true, file });
   } catch (e) {
     return errorResponse(e);

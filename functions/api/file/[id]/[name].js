@@ -1,39 +1,14 @@
-// GET    /api/file/<id>/<name>[?private=1][&download=1]  →  the file itself, for the viewer
-// PATCH  /api/file/<id>/<name>  { private, wasPrivate }   →  make it public or private
-// DELETE /api/file/<id>/<name>[?private=1]                 →  delete it
-import { json } from '../../../../lib/http.js';
+// GET /api/file/<id>/<name>[?download=1]  →  the file itself, for the editor's
+// preview (straight from GitHub, so it works before the site updates)
 import { errorResponse, ownerGuard } from '../../../../lib/labels.js';
-import { readFile, setPrivate, removeFile } from '../../../../lib/files.js';
-
-const flag = (request, key) => new URL(request.url).searchParams.get(key) === '1';
+import { readFile } from '../../../../lib/files.js';
 
 export async function onRequestGet({ request, env, params }) {
   const stop = await ownerGuard(request, env);
   if (stop) return stop;
   try {
-    return await readFile(env, String(params.id), String(params.name), flag(request, 'private'), flag(request, 'download'));
-  } catch (e) {
-    return errorResponse(e);
-  }
-}
-
-export async function onRequestPatch({ request, env, params }) {
-  const stop = await ownerGuard(request, env);
-  if (stop) return stop;
-  try {
-    let body = {};
-    try { body = (await request.json()) || {}; } catch (e) { /* defaults below */ }
-    return json({ ok: true, file: await setPrivate(env, String(params.id), String(params.name), body.wasPrivate === true, body.private === true) });
-  } catch (e) {
-    return errorResponse(e);
-  }
-}
-
-export async function onRequestDelete({ request, env, params }) {
-  const stop = await ownerGuard(request, env);
-  if (stop) return stop;
-  try {
-    return json({ ok: true, file: await removeFile(env, String(params.id), String(params.name), flag(request, 'private')) });
+    const download = new URL(request.url).searchParams.get('download') === '1';
+    return await readFile(env, String(params.id), String(params.name), download);
   } catch (e) {
     return errorResponse(e);
   }

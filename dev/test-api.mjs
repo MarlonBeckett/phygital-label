@@ -222,93 +222,84 @@ await control({ hidden: false });
 
 // --------------------------------------------------------------- files ---
 // The browser sends files as base64 text (the server streams it to GitHub).
-const upload = (name, bytes, isPrivate = false) => fetch(`${B}/api/files`, {
+const upload = (name, bytes) => fetch(`${B}/api/files`, {
   method: 'POST',
-  headers: { Cookie: cookie, Origin: B, 'Content-Type': 'text/plain', 'X-File-Name': encodeURIComponent(name), 'X-File-Private': isPrivate ? '1' : '0' },
+  headers: { Cookie: cookie, Origin: B, 'Content-Type': 'text/plain', 'X-File-Name': encodeURIComponent(name) },
   body: Buffer.from(bytes).toString('base64')
 }).then(async (x) => ({ status: x.status, data: await x.json() }));
+const fileRefsNow = async () => (await api('/api/files')).data.files.map((f) => f.ref);
 const pdfBytes = Buffer.from('%PDF-1.4\n% test manual\n');
 let up = await upload('My Manual (v2).pdf', pdfBytes);
-ok(up.status === 200 && up.data.file.name === 'My-Manual-v2.pdf' && /^[a-z0-9]{16}$/.test(up.data.file.id) && !up.data.file.private, 'upload a public file (name cleaned, random id)');
+ok(up.status === 200 && up.data.file.name === 'My-Manual-v2.pdf' && /^[a-z0-9]{16}$/.test(up.data.file.id) && !('private' in up.data.file), 'upload a file (name cleaned, random id, no private option)');
 const pubFile = up.data.file;
-up = await upload('receipt.txt', Buffer.from('Bought 2026-10-11'), true);
-ok(up.status === 200 && up.data.file.private, 'upload a private file');
-const priv = up.data.file;
-ok((await upload('page.html', Buffer.from('<script>alert(1)</script>'))).status === 400, 'risky type refused as public');
-up = await upload('page.html', Buffer.from('<script>alert(1)</script>'), true);
-ok(up.status === 200, 'risky type allowed as private');
-const risky = up.data.file;
+r = await upload('page.html', Buffer.from('<script>alert(1)</script>'));
+ok(r.status === 400 && /can't be uploaded/.test(r.data.error), 'web-page files refused');
 ok((await upload('big.bin', Buffer.alloc(10 * 1024 * 1024 + 3))).status === 413, 'over 10 MB refused');
 ok((await upload('empty.txt', Buffer.alloc(0))).status !== 200, 'empty file refused');
-ok((await upload('feed.rss', Buffer.from('<rss/>'))).status === 400, 'XML-like types refused as public');
-ok((await upload('noext', Buffer.from('x'))).status === 400, 'files without an extension refused as public');
+ok((await upload('feed.rss', Buffer.from('<rss/>'))).status === 400, 'XML-like types refused');
+ok((await upload('noext', Buffer.from('x'))).status === 400, 'files without an extension refused');
 up = await upload('firmware.zip', Buffer.from('PK'));
-ok(up.status === 200 && !up.data.file.private, 'download types like zip can be public');
+ok(up.status === 200, 'download types like zip are fine');
 const zipFile = up.data.file;
-up = await upload('big-ok.bin', Buffer.alloc(3 * 1024 * 1024, 7), true);
-r = await fetch(`${B}/api/file/${up.data.file.ref}?private=1`, { headers: { Cookie: cookie } });
+up = await upload('big-ok.pdf', Buffer.alloc(3 * 1024 * 1024, 7));
+r = await fetch(`${B}/api/file/${up.data.file.ref}`, { headers: { Cookie: cookie } });
 ok(up.status === 200 && Buffer.from(await r.arrayBuffer()).equals(Buffer.alloc(3 * 1024 * 1024, 7)), 'a 3 MB file streams up and back intact');
 const bigFile = up.data.file;
 ok((await fetch(`${B}/api/files`, { method: 'POST', headers: { 'X-File-Name': 'x.txt' }, body: 'x' })).status !== 200, 'upload needs the password');
 
-// A label that shows the public file.
+// Saving a label deletes uploads no label uses, in the same commit.
 const fl = `${id}-files`;
-await api(`/api/tag/${fl}`, { method: 'PUT', body: JSON.stringify({ tag: { pages: [{ slug: '', title: 'Files', blocks: [{ type: 'file', label: 'Manual', file: pubFile.ref }] }] } }) });
+const flTag = (refs) => ({ tag: { pages: [{ slug: '', title: 'Files', blocks: [{ type: 'files', label: 'Manual', files: refs }] }] } });
+let sv = await api(`/api/tag/${fl}`, { method: 'PUT', body: JSON.stringify(flTag([pubFile.ref, zipFile.ref])) });
+let now = await fileRefsNow();
+ok(sv.status === 200 && now.includes(pubFile.ref) && now.includes(zipFile.ref) && !now.includes(bigFile.ref), 'saving deletes a file no label uses');
+sv = await api(`/api/tag/${fl}`, { method: 'PUT', body: JSON.stringify({ ...flTag([pubFile.ref, zipFile.ref]), sha: sv.data.sha }) });
+ok(sv.status === 200, 'the sha from a save that deleted files works for the next save');
 j = await api('/api/files');
 const listed = (ref) => j.data.files.find((f) => f.ref === ref);
 res = await call('list_files', {});
-ok(!res.isError && res.content[0].text.includes(pubFile.ref) && /private \(cannot go on labels\)/.test(res.content[0].text), 'Claude can list files (public refs, private marked)');
-ok(j.status === 200 && listed(pubFile.ref) && listed(priv.ref)?.private, 'list shows public and private files');
+ok(!res.isError && res.content[0].text.includes(`ref ${pubFile.ref}`), 'Claude can list files');
 ok(JSON.stringify(listed(pubFile.ref).usedBy) === JSON.stringify([fl]), 'list says which labels use a file');
 ok((await api(`/api/tag/${fl}`, { method: 'PUT', body: JSON.stringify({ tag: { pages: [{ slug: '', title: 'x', blocks: [{ type: 'file', file: '../../etc/passwd' }] }] } }) })).status === 400, 'file block must point at an upload');
 
 r = await fetch(`${B}/api/file/${pubFile.ref}`, { headers: { Cookie: cookie } });
-ok(r.status === 200 && r.headers.get('content-type') === 'application/pdf' && /inline/.test(r.headers.get('content-disposition')) && Buffer.from(await r.arrayBuffer()).equals(pdfBytes), 'view a public file');
-r = await fetch(`${B}/api/file/${priv.ref}?private=1`, { headers: { Cookie: cookie } });
-ok(r.status === 200 && (await r.text()) === 'Bought 2026-10-11', 'view a private file');
-r = await fetch(`${B}/api/file/${risky.ref}?private=1`, { headers: { Cookie: cookie } });
-ok(r.headers.get('content-type') === 'application/octet-stream' && /attachment/.test(r.headers.get('content-disposition')) && r.headers.get('x-content-type-options') === 'nosniff', 'risky file always downloads');
-ok((await fetch(`${B}/api/file/${priv.ref}?private=1`)).status === 401, 'private file needs the password');
-ok((await fetch(`${B}/api/file/${pubFile.id}/..%2F..%2Fsecrets?private=1`, { headers: { Cookie: cookie } })).status === 400, 'no path tricks in file names');
-ok((await fetch(`${B}/files/${pubFile.ref}`)).status === 404, 'files are only public on the site after a deploy');
+ok(r.status === 200 && r.headers.get('content-type') === 'application/pdf' && /inline/.test(r.headers.get('content-disposition')) && Buffer.from(await r.arrayBuffer()).equals(pdfBytes), 'preview a file');
+r = await fetch(`${B}/api/file/${zipFile.ref}`, { headers: { Cookie: cookie } });
+ok(r.headers.get('content-type') === 'application/octet-stream' && /attachment/.test(r.headers.get('content-disposition')) && r.headers.get('x-content-type-options') === 'nosniff', 'other types always download');
+ok((await fetch(`${B}/api/file/${pubFile.ref}`)).status === 401, 'the preview needs the password');
+ok((await fetch(`${B}/api/file/${pubFile.id}/..%2F..%2Fsecrets`, { headers: { Cookie: cookie } })).status === 400, 'no path tricks in file names');
+ok((await fetch(`${B}/files/${pubFile.ref}`)).status === 404, 'files are only on the site after a deploy');
+ok((await api(`/api/file/${pubFile.ref}`, { method: 'DELETE' })).status === 405 && (await api(`/api/file/${pubFile.ref}`, { method: 'PATCH', body: '{}' })).status === 405, 'no separate file delete or public/private switch');
 
-await control({ failMove: true });
-let pr = await api(`/api/file/${priv.ref}`, { method: 'PATCH', body: JSON.stringify({ wasPrivate: true, private: false }) });
-ok(pr.status !== 200, 'an interrupted public/private switch reports it');
-pr = await api(`/api/file/${priv.ref}`, { method: 'PATCH', body: JSON.stringify({ wasPrivate: true, private: false }) });
-ok(pr.status === 200, 'and can simply be tried again');
-j = await api('/api/files');
-ok(listed(priv.ref) && !listed(priv.ref).private, 'and it is listed as public');
-ok(j.data.files.filter((f) => f.ref === priv.ref).length === 1, 'a moved file exists exactly once');
-ok((await api(`/api/file/${risky.ref}`, { method: 'PATCH', body: JSON.stringify({ wasPrivate: true, private: false }) })).status === 400, 'a risky file cannot be made public');
-for (const f of [pubFile, risky, zipFile, bigFile]) await api(`/api/file/${f.ref}?private=${f.private ? 1 : 0}`, { method: 'DELETE' });
-ok((await api(`/api/file/${priv.ref}?private=0`, { method: 'DELETE' })).status === 200, 'delete a file');
-j = await api('/api/files');
-ok(!j.data.files.some((f) => [pubFile.ref, priv.ref, risky.ref].includes(f.ref)), 'deleted files are gone');
-await api(`/api/tag/${fl}`, { method: 'DELETE', body: '{}' });
+// Taking a file off deletes it; a stale save deletes nothing.
+const spare = (await upload('spare.pdf', Buffer.from('%PDF-1.4'))).data.file;
+r = await api(`/api/tag/${fl}`, { method: 'PUT', body: JSON.stringify({ ...flTag([pubFile.ref]), sha: '0'.repeat(40) }) });
+now = await fileRefsNow();
+ok(r.status === 409 && now.includes(zipFile.ref) && now.includes(spare.ref), 'a save that conflicts deletes nothing');
+sv = await api(`/api/tag/${fl}`, { method: 'PUT', body: JSON.stringify({ ...flTag([pubFile.ref]), sha: sv.data.sha }) });
+now = await fileRefsNow();
+ok(sv.status === 200 && now.includes(pubFile.ref) && !now.includes(zipFile.ref) && !now.includes(spare.ref), 'a file taken off a label is deleted on save');
+ok((await api(`/api/tag/${fl}`)).data.tag.pages[0].blocks[0].files.length === 1, 'and the label saved');
 
-// Deleting a label deletes its files, except ones another label also uses.
+// Deleting a label deletes all its files, even ones another label shows.
 {
   const only = (await upload('only-a.jpg', Buffer.from('a'))).data.file;
   const shared = (await upload('shared.pdf', Buffer.from('%PDF-1.4'))).data.file;
-  const spare = (await upload('spare.pdf', Buffer.from('%PDF-1.4'))).data.file;
   const la = `${id}-del-a`, lb = `${id}-del-b`;
   await api(`/api/tag/${la}`, { method: 'PUT', body: JSON.stringify({ tag: { pages: [{ slug: '', title: 'A', blocks: [
     { type: 'files', files: [only.ref, shared.ref], uploads: true }] }] } }) });
   await api(`/api/tag/${lb}`, { method: 'PUT', body: JSON.stringify({ tag: { pages: [{ slug: '', title: 'B', blocks: [{ type: 'file', file: shared.ref }] }] } }) });
-  const stale = '0'.repeat(40);
-  r = await api(`/api/tag/${la}`, { method: 'DELETE', body: JSON.stringify({ sha: stale }) });
-  ok(r.status === 409 && (await api(`/api/tag/${la}`)).status === 200, 'a label changed since it was listed is not deleted');
-  const listedSha = (await api('/api/tags')).data.tags.find((t) => t.slug === la).sha;
-  r = await api(`/api/tag/${la}`, { method: 'DELETE', body: JSON.stringify({ sha: listedSha }) });
-  ok(r.status === 200 && JSON.stringify(r.data.files) === JSON.stringify(['only-a.jpg']), 'delete reports the files it took', JSON.stringify(r.data));
-  const left = (await api('/api/files')).data.files.map((f) => f.ref);
-  ok((await api(`/api/tag/${la}`)).status === 404 && !left.includes(only.ref), 'label and its own file are gone from the repo');
-  ok(left.includes(shared.ref) && left.includes(spare.ref), 'a file another label uses, and unused files, stay');
+  await control({ raceNextRef: true }); // someone else saves at the same moment
+  r = await api(`/api/tag/${la}`, { method: 'DELETE', body: JSON.stringify({ sha: '0'.repeat(40) }) });
+  ok(r.status === 200 && JSON.stringify([...r.data.files].sort()) === JSON.stringify(['only-a.jpg', 'shared.pdf']), 'delete reports all the files it took (and retries a race)', JSON.stringify(r.data));
+  now = await fileRefsNow();
+  ok((await api(`/api/tag/${la}`)).status === 404 && !now.includes(only.ref) && !now.includes(shared.ref), 'label and all its files are gone from the repo');
+  ok(now.includes(pubFile.ref), "other labels' files stay");
   r = await api(`/api/tag/${lb}`, { method: 'DELETE', body: '{}' });
-  ok(r.status === 200 && !(await api('/api/files')).data.files.some((f) => f.ref === shared.ref), 'deleting the last label using a file deletes it');
-  await api(`/api/file/${spare.ref}?private=0`, { method: 'DELETE' });
+  ok(r.status === 200 && JSON.stringify(r.data.files) === '[]', 'a label whose file is already gone deletes fine');
 }
+await api(`/api/tag/${fl}`, { method: 'DELETE', body: '{}' });
+ok(!(await fileRefsNow()).includes(pubFile.ref), "deleting the label took its file");
 
 // ------------------------------------------------- notes anyone can edit ---
 const ve = `${id}-log`;
@@ -382,7 +373,7 @@ let vu = await vup('Oil receipt.jpg', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2,
 ok(vu.status === 200 && /^[a-z0-9]{16}\/Oil-receipt\.jpg$/.test(vu.data.file.ref), 'a visitor can add a file to an open stack (no login)');
 const after = (await api(`/api/tag/${st}`)).data.tag;
 ok(after.pages[0].blocks[0].files.includes(vu.data.file.ref), 'the label now lists the file');
-r = await fetch(`${B}/api/file/${vu.data.file.ref}?private=0`, { headers: { Cookie: cookie } });
+r = await fetch(`${B}/api/file/${vu.data.file.ref}`, { headers: { Cookie: cookie } });
 ok(r.status === 200 && Buffer.from(await r.arrayBuffer()).equals(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])), 'the uploaded file is stored intact');
 let msgs = await (await fetch(`${MOCK}/repos/x/y/commits?since=2000-01-01`)).json();
 ok(msgs.filter((c) => c.commit.message.startsWith('Visitor upload to /')).length === 1, 'file and label saved in one commit');
@@ -420,7 +411,6 @@ ok((await vup('one-more.jpg', Buffer.from('x'))).status === 409, 'a full stack (
 // Claude must pass a sha for labels visitors can change.
 ok((await call('update_label', { address: st, label: full })).isError, 'Claude needs the current sha for labels visitors can change');
 ok((await call('update_label', { address: st, label: full, sha: 'abc1234' })).isError, 'a made-up sha counts as no sha');
-for (const f of (await api('/api/files')).data.files.filter((x) => (x.usedBy || []).includes(st))) await api(`/api/file/${f.ref}?private=0`, { method: 'DELETE' });
 await api(`/api/tag/${st}`, { method: 'DELETE', body: '{}' });
 fs.unlinkSync(`${root}public/tags/${st}.json`);
 

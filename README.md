@@ -106,7 +106,7 @@ To swap in a fresh copy: download the font, then on GitHub open the `public/font
 
 To change or delete a tag later, open `/new` and use **Edit** or the bin next to it on the main menu.
 
-Deleting a label also deletes the uploaded files on it (including ones visitors added), unless another label uses them too. Both go from your repo in one save, and the sticker shows "Nothing here" about a minute later. Like every change, the old version stays in the repo's GitHub history.
+Deleting a label also deletes every file on it (including ones visitors added) from your repo, in the same save, and the sticker shows "Nothing here" about a minute later. Like every change, the old version stays in the repo's GitHub history.
 
 ### 7. Connect Claude (optional)
 
@@ -141,7 +141,7 @@ Settings are saved in `public/tags/_settings.json` in your repo. The underscore 
 | --- | --- |
 | **Link** | A tape strip that opens a web address (must start with `https://` or `http://`). If you haven't added the address yet, it shows faded and can't be tapped. |
 | **Text** | A paper note. Line breaks are kept. Add a link inside text like this: `[the manual](https://example.com)`. Switch on **Anyone can edit** to let people who tap the sticker change it (see below). |
-| **File** | One or more of your uploaded **public** files (see Files below). With one file: photos show on the page, videos and audio play there, and anything else (a PDF manual, say) opens from a tape strip. With more files, people swipe through them (or use the arrows) and tap a photo or video to see it full screen. Two switches: **Anyone can download** adds a Download button for the file on screen, and **Anyone can upload** lets people who tap the sticker add files, like receipts under a service log (see below). |
+| **File** | One or more files you upload right on the block (see Files below). With one file: photos show on the page, videos and audio play there, and anything else (a PDF manual, say) opens from a tape strip. With more files, people swipe through them (or use the arrows) and tap a photo or video to see it full screen. Two switches: **Anyone can download** adds a Download button for the file on screen, and **Anyone can upload** lets people who tap the sticker add files, like receipts under a service log (see below). |
 | **Video** | A YouTube video (youtube.com, youtu.be or Shorts links). It shows the thumbnail, and the player only loads when someone taps it, using YouTube's privacy-enhanced mode. |
 | **Menu** | A strip with a second strip peeking out behind it. It opens another page of the same tag, which has its own color and blocks. Choose **+ New page** to make one. |
 | **Heading** | A small strip that labels a section. Not clickable. |
@@ -152,25 +152,22 @@ Addresses and links always show in a plain monospace font, even with the label f
 
 ## Files
 
-The **Files** tab on the main menu keeps files with your labels, in your repo:
+Upload files right on a **File** block in the editor: tap **Upload a file**, and it goes into your repo next to your labels.
 
-- **Upload** any file up to 10 MB, and choose **Public** or **Private**.
-- **Public** files can go on labels with a File block, for anyone who taps the sticker. Their address has a random part, so nobody can guess it.
-- **Private** files only show in the label maker after unlocking (receipts, warranties, serial numbers). They're kept out of the website entirely.
-- **View** opens images, PDFs, video, audio and text right there; anything else downloads. **Make public / Make private**, **Copy link** and delete are on each file. It warns you if a label uses a file you're hiding or deleting.
-- Only files browsers show safely (photos, video, audio, PDFs, text) and common download types (zip, Office documents, 3D-print files, firmware and so on) can be public. Anything else, including web-page and script files like HTML, SVG or JavaScript, can only be private and always downloads, because it could run code on your site.
-- Each upload is a save to GitHub, so a new public file's link works about a minute later. Making a file private or deleting it stops it showing here, but anyone who already had its link may reach copies on older versions of the site for a while.
-- **Optional, saves deploys:** private files aren't part of the website, so uploading one doesn't need a new deploy. If your Cloudflare project has **Settings › Build › Build watch paths**, add `files/*` to the exclude list.
+- Any file up to 10 MB that browsers show safely (photos, video, audio, PDFs, text) or that people download (zip, Office documents, 3D-print files, firmware and so on). Web-page and script files like HTML, SVG or JavaScript are refused because they could run code on your site; put them in a .zip.
+- Every file is public: it's on a label, so anyone with the sticker can open it. Its address has a random part, so nobody can guess it. Don't upload anything secret.
+- **Files only live on labels.** Take one off with **×** and it's deleted from your repo when you save. Delete a label and all its files go with it. Saving any label also clears out files no label uses any more.
+- Each upload is a save to GitHub, so a new file shows on the page about a minute after you save the label. Anyone who already had a deleted file's link may reach copies on older versions of the site for a while.
 
 ## Files anyone can add to
 
 Switch on **Anyone can upload** on a **File** block: it gets an **Add a file** button on the page, and whatever someone adds joins the files there for everyone with the sticker to swipe through.
 
-- Visitors can add the same kinds of files you can make public, up to 5 MB each. Web-page and script files are never accepted.
+- Visitors can add the same kinds of files you can, up to 5 MB each. Web-page and script files are never accepted.
 - Each person can add 3 files an hour. Visitor uploads and note edits share the site's limit of 10 a day, and visitor uploads stop at 25 MB a day (GitHub keeps every file in the history, even after you delete it, so this keeps your repo from growing fast).
 - If you're editing the label when someone adds a file, **Overwrite** keeps their file.
 - Each upload is one commit ("Visitor upload to /address: file name"), adding the file and updating the label together.
-- Their files show up in your **Files** tab like your own. Delete any you don't want, or take them off the File block in the editor.
+- Don't want one? Take it off the File block in the editor (**×**) and save: it's deleted from your repo.
 
 ## Notes anyone can edit
 
@@ -187,7 +184,7 @@ Turn on **Anyone can edit** on a text block, and its note gets an **Edit** butto
 - No page lists your tags. Someone has to know (or tap) the exact address.
 - Every page tells search engines not to index it, and `robots.txt` asks crawlers to stay away.
 - Your tag files live in your private repo, and the raw files are not served on the website.
-- Pages are still public to anyone who has the address, so don't put anything secret on a tag. The same goes for public files; use private files for anything personal.
+- Pages and their files are public to anyone who has the address, so don't put anything secret on a tag.
 
 ## How it works (for the curious)
 
