@@ -106,6 +106,8 @@ To swap in a fresh copy: download the font, then on GitHub open the `public/font
 
 To change or delete a tag later, open `/new` and use **Edit** or the bin next to it on the main menu.
 
+Deleting a label also deletes the uploaded files on it (including ones visitors added), unless another label uses them too. Both go from your repo in one save, and the sticker shows "Nothing here" about a minute later. Like every change, the old version stays in the repo's GitHub history.
+
 ### 7. Connect Claude (optional)
 
 Claude can then list, make, change and delete labels for you.

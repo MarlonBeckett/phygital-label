@@ -450,7 +450,11 @@ $('label-list').addEventListener('click', async (e) => {
   if (del) {
     const slug = del.getAttribute('data-delete');
     const item = labels.find((l) => l.slug === slug);
-    if (!(await ask(`Delete /${slug}? Its page stops working, so any sticker pointing at it will show "Nothing here". This can't be undone here.`, { ok: 'Delete label', danger: true }))) return;
+    // Files only this label uses go with it (the server works out the same list).
+    const own = filesLoaded ? files.filter((f) => !f.private && f.usedBy.length === 1 && f.usedBy[0] === slug) : [];
+    const goes = own.length ? ` Its ${own.length === 1 ? 'file' : `${own.length} files`} (${own.map((f) => f.name).join(', ')}) will be deleted too.`
+      : ' Any files on it that no other label uses will be deleted too.';
+    if (!(await ask(`Delete /${slug}? Its page stops working, so any sticker pointing at it will show "Nothing here".${goes} This can't be undone here.`, { ok: 'Delete label', danger: true }))) return;
     del.disabled = true;
     const { status, data } = await api(`/api/tag/${encodeURIComponent(slug)}`, { method: 'DELETE', body: JSON.stringify({ sha: item ? item.sha : '' }) });
     del.disabled = false;
@@ -459,6 +463,7 @@ $('label-list').addEventListener('click', async (e) => {
     if (state.loadedSlug === slug) { state.loadedSlug = ''; state.sha = ''; saveDraft(); }
     labels = labels.filter((l) => l.slug !== slug);
     renderLabels();
+    if (filesLoaded) loadFiles(false); // its files may be gone too
   }
 });
 

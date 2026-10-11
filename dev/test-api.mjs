@@ -287,6 +287,29 @@ j = await api('/api/files');
 ok(!j.data.files.some((f) => [pubFile.ref, priv.ref, risky.ref].includes(f.ref)), 'deleted files are gone');
 await api(`/api/tag/${fl}`, { method: 'DELETE', body: '{}' });
 
+// Deleting a label deletes its files, except ones another label also uses.
+{
+  const only = (await upload('only-a.jpg', Buffer.from('a'))).data.file;
+  const shared = (await upload('shared.pdf', Buffer.from('%PDF-1.4'))).data.file;
+  const spare = (await upload('spare.pdf', Buffer.from('%PDF-1.4'))).data.file;
+  const la = `${id}-del-a`, lb = `${id}-del-b`;
+  await api(`/api/tag/${la}`, { method: 'PUT', body: JSON.stringify({ tag: { pages: [{ slug: '', title: 'A', blocks: [
+    { type: 'files', files: [only.ref, shared.ref], uploads: true }] }] } }) });
+  await api(`/api/tag/${lb}`, { method: 'PUT', body: JSON.stringify({ tag: { pages: [{ slug: '', title: 'B', blocks: [{ type: 'file', file: shared.ref }] }] } }) });
+  const stale = '0'.repeat(40);
+  r = await api(`/api/tag/${la}`, { method: 'DELETE', body: JSON.stringify({ sha: stale }) });
+  ok(r.status === 409 && (await api(`/api/tag/${la}`)).status === 200, 'a label changed since it was listed is not deleted');
+  const listedSha = (await api('/api/tags')).data.tags.find((t) => t.slug === la).sha;
+  r = await api(`/api/tag/${la}`, { method: 'DELETE', body: JSON.stringify({ sha: listedSha }) });
+  ok(r.status === 200 && JSON.stringify(r.data.files) === JSON.stringify(['only-a.jpg']), 'delete reports the files it took', JSON.stringify(r.data));
+  const left = (await api('/api/files')).data.files.map((f) => f.ref);
+  ok((await api(`/api/tag/${la}`)).status === 404 && !left.includes(only.ref), 'label and its own file are gone from the repo');
+  ok(left.includes(shared.ref) && left.includes(spare.ref), 'a file another label uses, and unused files, stay');
+  r = await api(`/api/tag/${lb}`, { method: 'DELETE', body: '{}' });
+  ok(r.status === 200 && !(await api('/api/files')).data.files.some((f) => f.ref === shared.ref), 'deleting the last label using a file deletes it');
+  await api(`/api/file/${spare.ref}?private=0`, { method: 'DELETE' });
+}
+
 // ------------------------------------------------- notes anyone can edit ---
 const ve = `${id}-log`;
 const logTag = { pages: [{ slug: '', title: 'Log', blocks: [

@@ -45,8 +45,8 @@ export async function onRequestDelete({ request, env, params }) {
   if (stop) return stop;
   try {
     const body = await readBody(request);
-    await removeLabel(env, String(params.slug || ''), typeof body.sha === 'string' ? body.sha : '');
-    return json({ ok: true });
+    const gone = await removeLabel(env, String(params.slug || ''), typeof body.sha === 'string' ? body.sha : '');
+    return json({ ok: true, files: gone.files });
   } catch (e) {
     return errorResponse(e);
   }
