@@ -366,7 +366,9 @@ a.tm-btn { text-decoration: none; color: var(--ink); }
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
   cursor: pointer;
 }
-.tm-card .tm-switch-row { padding: 0; box-shadow: none; }
+.tm-card .tm-switch-row, .tm-switch-inline { padding: 0; box-shadow: none; }
+.tm-switch-inline { background: transparent; }
+.lt-edit-badge { font-family: var(--ui); }
 .tm-switch-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .tm-switch-title { font-size: 16px; }
 .tm-sample-regular { font-family: var(--mono); font-size-adjust: none; letter-spacing: normal; }
@@ -485,7 +487,7 @@ a.tm-btn { text-decoration: none; color: var(--ink); }
 .tm-code { font-family: var(--mono); font-size-adjust: none; letter-spacing: normal; color: var(--ink); }
 
 .tm-add-title { margin-top: 8px; font-size: 13px; }
-.tm-add-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.tm-add-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .tm-add {
   height: 66px;
   display: flex;
@@ -582,3 +584,34 @@ a.tm-btn { text-decoration: none; color: var(--ink); }
 .tm-dialog::backdrop { background: rgba(20, 20, 20, 0.45); }
 .tm-ask-text { margin: 0 0 6px; font-size: 16px; line-height: 1.5; white-space: pre-line; }
 .tm-btn-danger-fill { background-color: #A0151B; color: #FFFFFF !important; }
+
+/* ---- Files ---- */
+.tm-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+label.tm-tape-btn { cursor: pointer; position: relative; }
+label.tm-tape-btn:focus-within { outline: 2px solid var(--ink); outline-offset: 3px; }
+.tm-tape-upload { background-color: #1B4A9E; font-size: 26px; transform: rotate(-0.8deg); }
+.tm-file { gap: 10px; }
+.tm-file-main { display: flex; align-items: center; gap: 12px; padding: 0; border: 0; background: transparent; text-align: left; min-width: 0; }
+.tm-file-thumb { flex: none; width: 52px; height: 52px; border-radius: 8px; object-fit: cover; background-color: #EFEEEA; }
+.tm-file-icon { display: inline-flex; align-items: center; justify-content: center; color: #3D3A35; }
+.tm-file-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tm-file-name { font-family: var(--mono); font-size-adjust: none; letter-spacing: normal; font-size: 14px; overflow-wrap: anywhere; }
+.tm-file-meta { font-size: 12px; color: #55524C; }
+.tm-file .tm-item-actions { flex-wrap: wrap; }
+.tm-upload-inline { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; position: relative; cursor: pointer; }
+.tm-upload-inline:focus-within { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* The viewer: as large as the screen allows. */
+.tm-viewer { width: calc(100% - 24px); max-width: 720px; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); padding: 16px; display: none; flex-direction: column; gap: 12px; }
+.tm-viewer[open] { display: flex; }
+.tm-viewer-head { display: flex; align-items: center; gap: 8px; }
+.tm-viewer-name { flex: 1 1 auto; margin: 0; font-family: var(--mono); font-size-adjust: none; letter-spacing: normal; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.tm-viewer-body { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: auto; border-radius: 10px; background-color: #EFEEEA; }
+.tm-viewer-body img, .tm-viewer-body video { max-width: 100%; max-height: 65vh; max-height: 65dvh; display: block; }
+.tm-viewer-body iframe { width: 100%; height: 65vh; height: 65dvh; border: 0; background: #FFFFFF; }
+.tm-viewer-body audio { width: 100%; margin: 24px 12px; }
+.tm-viewer-body > .tm-hint { padding: 24px; text-align: center; }
+.tm-viewer-text { width: 100%; max-height: 65vh; max-height: 65dvh; margin: 0; padding: 14px; overflow: auto; align-self: stretch; font-family: var(--mono); font-size-adjust: none; letter-spacing: normal; font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; background: #FFFFFF; }
+.tm-viewer-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tm-viewer-foot .tm-btn { height: 46px; }
+.tm-viewer-foot a[hidden] + a { grid-column: 1 / -1; }

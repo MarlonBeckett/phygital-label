@@ -44,6 +44,7 @@
 
   <div class="tm-tabs" role="tablist" aria-label="Main menu">
     <button id="tab-labels" type="button" class="tm-tape tm-tab" role="tab" aria-selected="true" aria-controls="panel-labels" data-tab="labels" data-emboss="Labels">Labels</button>
+    <button id="tab-files" type="button" class="tm-tape tm-tab" role="tab" aria-selected="false" aria-controls="panel-files" data-tab="files" data-emboss="Files" tabindex="-1">Files</button>
     <button id="tab-settings" type="button" class="tm-tape tm-tab" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings" data-emboss="Settings" tabindex="-1">Settings</button>
   </div>
 
@@ -66,6 +67,24 @@
   </section>
 
   <button id="home-logout" type="button" class="tm-btn-link">Lock the phygital label maker on this phone</button>
+  </div>
+
+  <div id="panel-files" class="tm-panel" role="tabpanel" aria-labelledby="tab-files" hidden>
+  <div class="tm-stack-sm">
+    <label class="tm-tape tm-tape-btn tm-tape-upload" aria-label="Upload a file">
+      <span class="lt-letters" aria-hidden="true" data-emboss-inner="+ Upload file"></span>
+      <input id="files-upload" type="file" class="tm-visually-hidden">
+    </label>
+    <p class="tm-hint">Up to 10 MB each. <strong>Public</strong> files can go on labels for anyone to open. <strong>Private</strong> files only show here, after unlocking.</p>
+    <p id="upload-status" class="tm-hint" role="status"></p>
+  </div>
+  <section aria-labelledby="files-title" class="tm-section">
+    <div class="tm-row-between">
+      <h2 id="files-title" class="tm-label">Your files</h2>
+      <span id="file-count" class="tm-count"></span>
+    </div>
+    <div id="file-list" class="tm-label-list" aria-live="polite"></div>
+  </section>
   </div>
 
   <div id="panel-settings" class="tm-panel" role="tabpanel" aria-labelledby="tab-settings" hidden>
@@ -247,6 +266,21 @@
     <button id="saved-home" type="button" class="tm-btn tm-btn-plain">Back to your labels</button>
   </div>
 </main>
+
+<!-- File viewer -->
+<dialog id="viewer" class="tm-dialog tm-viewer" aria-labelledby="viewer-name">
+  <div class="tm-viewer-head">
+    <h2 id="viewer-name" class="tm-viewer-name"></h2>
+    <button id="viewer-close" type="button" class="tm-icon-btn" aria-label="Close">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div id="viewer-body" class="tm-viewer-body"></div>
+  <div class="tm-viewer-foot">
+    <a id="viewer-open" class="tm-btn tm-btn-outline-lg" target="_blank" rel="noopener">Open</a>
+    <a id="viewer-download" class="tm-btn tm-btn-dark" download>Download</a>
+  </div>
+</dialog>
 
 <!-- Questions and messages (the browser's own confirm() is blocked in some in-app browsers) -->
 <dialog id="ask-dialog" class="tm-dialog" aria-labelledby="ask-text">

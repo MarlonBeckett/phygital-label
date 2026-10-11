@@ -3,7 +3,7 @@
 
 import {
   esc, isHttpUrl, youtubeId, richTextHtml, validateTag, splitLines, nextFreeSlug,
-  fontOf, renderPageHtml, backLinkHtml
+  fontOf, renderPageHtml, backLinkHtml, safeFileName, fileKind, isFileRef, formatBytes, cleanVisitorText, canBePublic
 } from '../public/assets/label.js';
 import { parseGitHubDate } from '../lib/github.js';
 import { redirectProblem, isClaudeRedirect, seal, unseal } from '../lib/oauth.js';
@@ -41,6 +41,59 @@ ok(!validateTag({ pages: [{ slug: '', title: 'x', blocks: [{ type: 'link', label
 eq(validateTag({}).tag, null, 'file without pages gives no tag');
 eq(validateTag(null).tag, null, 'null file gives no tag');
 ok(!validateTag({ pages: [{ slug: '', blocks: [{ type: 'menu', label: 'm', page: 'nope' }] }] }).ok, 'menu to a missing page fails');
+
+// --- uploaded files
+eq(safeFileName('My Manual (v2).PDF'), 'My-Manual-v2.pdf', 'file name cleaned, extension lower-cased');
+eq(safeFileName('../../etc/passwd'), 'passwd', 'no folders in file names');
+eq(safeFileName('Ünïcödé café.jpg'), 'Unicode-cafe.jpg', 'accents dropped');
+eq(safeFileName('???.png'), 'file.png', 'nothing usable → "file"');
+ok(safeFileName('a'.repeat(300) + '.pdf').length <= 100, 'file names capped at 100');
+eq(fileKind('x.PNG'), 'image', 'image kind');
+eq(fileKind('x.mp4'), 'video', 'video kind');
+eq(fileKind('x.pdf'), 'pdf', 'pdf kind');
+eq(fileKind('x.svg'), 'risky', 'svg is risky');
+eq(fileKind('x.html'), 'risky', 'html is risky');
+eq(fileKind('x.zip'), 'other', 'zip is other');
+ok(isFileRef('abcdefghijklmnop/manual.pdf'), 'valid file ref');
+ok(!isFileRef('abc/manual.pdf') && !isFileRef('abcdefghijklmnop/../x') && !isFileRef('abcdefghijklmnop/.htaccess'), 'bad file refs refused');
+eq(formatBytes(2048), '2 KB', 'format KB');
+eq(formatBytes(1536 * 1024), '1.5 MB', 'format MB');
+{
+  const tag = (blocks) => ({ pages: [{ slug: '', title: 'T', blocks }] });
+  ok(validateTag(tag([{ type: 'file', label: 'Manual', file: 'abcdefghijklmnop/manual.pdf' }])).ok, 'file block valid');
+  ok(!validateTag(tag([{ type: 'file', file: 'javascript:alert(1)' }])).ok, 'file block must be an upload');
+  const page = (b) => renderPageHtml(tag([b]), tag([b]).pages[0]);
+  ok(page({ type: 'file', label: 'Pic', file: 'abcdefghijklmnop/a.jpg' }).includes('<img src="/files/abcdefghijklmnop/a.jpg"'), 'image file shows inline');
+  ok(page({ type: 'file', file: 'abcdefghijklmnop/a.mp4' }).includes('<video src="/files/abcdefghijklmnop/a.mp4"'), 'video file plays inline');
+  ok(page({ type: 'file', label: 'Manual', file: 'abcdefghijklmnop/m.pdf' }).includes('href="/files/abcdefghijklmnop/m.pdf"'), 'other files open from a strip');
+  ok(page({ type: 'file', label: 'Manual', file: '' }).includes('coming soon'), 'missing file shows as coming soon');
+  const t = tag([{ type: 'file', file: 'abcdefghijklmnop/a.jpg' }]);
+  ok(renderPageHtml(t, t.pages[0], { fileUrl: (r) => `/api/file/${r}` }).includes('src="/api/file/abcdefghijklmnop/a.jpg"'), 'editor preview can load files through the API');
+}
+
+ok(canBePublic('a.pdf') && canBePublic('a.jpg') && canBePublic('a.zip') && canBePublic('a.docx'), 'viewable and download types can be public');
+ok(!canBePublic('a.html') && !canBePublic('a.svg') && !canBePublic('a.rss') && !canBePublic('a.xsd') && !canBePublic('a.es') && !canBePublic('noext'), 'web-page-like and unknown types are private-only');
+
+// --- notes anyone can edit
+{
+  const tag = (b) => ({ pages: [{ slug: '', title: 'T', blocks: [b] }] });
+  const note = { type: 'text', text: 'see [x](https://evil.example) <b>hi</b>', editable: true };
+  const live = renderPageHtml(tag(note), tag(note).pages[0], { tagSlug: 'r1', visitorEdit: true });
+  ok(!live.includes('<a href="https://evil.example"') && live.includes('[x](https://evil.example)'), 'editable notes never turn text into links');
+  ok(live.includes('&lt;b&gt;hi&lt;/b&gt;'), 'editable notes are escaped');
+  ok(live.includes('class="lt-edit-btn"') && live.includes('data-edit-tag="r1"'), 'live page gets an Edit button');
+  const preview = renderPageHtml(tag(note), tag(note).pages[0], { tagSlug: 'r1' });
+  ok(!preview.includes('lt-edit-btn') && preview.includes('Anyone can edit'), 'editor preview shows a badge instead');
+  ok(validateTag(tag({ type: 'text', text: 'x'.repeat(1000), editable: true })).ok, 'editable note up to 1000');
+  ok(!validateTag(tag({ type: 'text', text: 'x'.repeat(1001), editable: true })).ok, 'editable note over 1000 refused');
+  ok(validateTag(tag({ type: 'text', text: 'x'.repeat(1500) })).ok, 'normal notes keep the 2000 limit');
+  ok(!('editable' in validateTag(tag({ type: 'text', text: 'x', editable: 'yes' })).tag.pages[0].blocks[0]), 'editable must be true, not just truthy');
+  eq(cleanVisitorText('a\r\nb  \n\n\n\n\nc\u202Ed\u0007'), 'a\nb\n\n\ncd', 'visitor text cleaned');
+  eq(cleanVisitorText('a\u2028b\uFEFFc\u2060d\u061Ce\u00ADf\uE000g\tH 👍'), 'a\nbcdefg\tH 👍', 'invisible and direction characters removed, emoji kept');
+  const family = '👨\u200D👩\u200D👧';
+  const persian = 'می\u200Cخواهم';
+  eq(cleanVisitorText(family + ' ' + persian), family + ' ' + persian, 'joined emoji and Persian words survive');
+}
 
 // --- fonts
 eq(fontOf({}, 'regular'), 'regular', 'no choice follows site default');

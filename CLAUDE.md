@@ -41,7 +41,13 @@ owner does not code: explain steps in plain language.
   sign-in for Claude. Stateless: client ids, codes and tokens are HMAC-signed
   with ADMIN_PASSWORD plus the settings `epoch` ("Sign out everywhere" bumps
   it, which also invalidates login cookies).
-- `functions/api/*` – the label maker's API (session-protected).
+- `functions/api/*` – the label maker's API (session-protected), except
+  `visitor-edit.js` (no login; see `lib/visitor.js` for its limits).
+- `lib/files.js` – uploads: public in `public/files/<id>/<name>` (served as
+  static files with their own strict CSP in `_headers`), private in `files/`
+  (never deployed; read through `/api/file/…`). HTML/SVG/JS-like types are
+  private-only and always download. Max 10 MB (Worker memory).
+- `public/assets/page.js` – the public pages' script (YouTube, editable notes).
 
 ## Text style
 A tag's `font` is `"label"`, `"regular"`, or absent (= the site default from

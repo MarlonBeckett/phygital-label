@@ -138,21 +138,44 @@ Settings are saved in `public/tags/_settings.json` in your repo. The underscore 
 | Block | What it shows |
 | --- | --- |
 | **Link** | A tape strip that opens a web address (must start with `https://` or `http://`). If you haven't added the address yet, it shows faded and can't be tapped. |
-| **Text** | A paper note. Line breaks are kept. Add a link inside text like this: `[the manual](https://example.com)`. |
+| **Text** | A paper note. Line breaks are kept. Add a link inside text like this: `[the manual](https://example.com)`. Switch on **Anyone can edit** to let people who tap the sticker change it (see below). |
+| **File** | One of your uploaded **public** files (see Files below). Photos show on the page, videos and audio play there, and anything else (a PDF manual, say) opens from a tape strip. |
 | **Video** | A YouTube video (youtube.com, youtu.be or Shorts links). It shows the thumbnail, and the player only loads when someone taps it, using YouTube's privacy-enhanced mode. |
 | **Menu** | A strip with a second strip peeking out behind it. It opens another page of the same tag, which has its own color and blocks. Choose **+ New page** to make one. |
 | **Heading** | A small strip that labels a section. Not clickable. |
 
-Link, Menu and Heading strips can each have their own color. Letters switch to dark ink on light tape automatically.
+Link, Menu, Heading and File strips can each have their own color. Letters switch to dark ink on light tape automatically.
 
 Addresses and links always show in a plain monospace font, even with the label font on, because the label font only has capital letters and would hide the real case.
+
+## Files
+
+The **Files** tab on the main menu keeps files with your labels, in your repo:
+
+- **Upload** any file up to 10 MB, and choose **Public** or **Private**.
+- **Public** files can go on labels with a File block, for anyone who taps the sticker. Their address has a random part, so nobody can guess it.
+- **Private** files only show in the label maker after unlocking (receipts, warranties, serial numbers). They're kept out of the website entirely.
+- **View** opens images, PDFs, video, audio and text right there; anything else downloads. **Make public / Make private**, **Copy link** and delete are on each file. It warns you if a label uses a file you're hiding or deleting.
+- Only files browsers show safely (photos, video, audio, PDFs, text) and common download types (zip, Office documents, 3D-print files, firmware and so on) can be public. Anything else, including web-page and script files like HTML, SVG or JavaScript, can only be private and always downloads, because it could run code on your site.
+- Each upload is a save to GitHub, so a new public file's link works about a minute later. Making a file private or deleting it stops it showing here, but anyone who already had its link may reach copies on older versions of the site for a while.
+- **Optional, saves deploys:** private files aren't part of the website, so uploading one doesn't need a new deploy. If your Cloudflare project has **Settings › Build › Build watch paths**, add `files/*` to the exclude list.
+
+## Notes anyone can edit
+
+Turn on **Anyone can edit** on a text block, and its note gets an **Edit** button on the page: anyone who taps the sticker can change it, no password. Handy for a service log, "last cleaned", or a whiteboard on a shared fridge.
+
+- Only notes you switch on can be edited. Titles, strips, links and files stay yours.
+- Visitor text is always plain text: links don't work there, so nobody can slip in a phishing link. Notes anyone can edit are up to 1,000 characters.
+- Each person can make 6 edits an hour, and the whole site 10 a day. Each edit is a save, and the free Cloudflare plan allows 500 deploys a month, so this keeps visitors to about 300 at most and leaves room for yours.
+- Every edit is a commit in your repo, titled "Visitor edit on /address", so you can see and undo anything on GitHub.
+- If you're editing the same label in the label maker when someone else changes the note, saving offers **Overwrite** or **Save as copy**.
 
 ## Privacy
 
 - No page lists your tags. Someone has to know (or tap) the exact address.
 - Every page tells search engines not to index it, and `robots.txt` asks crawlers to stay away.
 - Your tag files live in your private repo, and the raw files are not served on the website.
-- Pages are still public to anyone who has the address, so don't put anything secret on a tag.
+- Pages are still public to anyone who has the address, so don't put anything secret on a tag. The same goes for public files; use private files for anything personal.
 
 ## How it works (for the curious)
 
@@ -211,7 +234,7 @@ When you save, the server checks everything again, then commits `public/tags/<ad
 }
 ```
 
-`"font"` is `"label"` or `"regular"`; leave it out to follow the site default from Settings. The first page is the main page (`"slug": ""`). Addresses use lowercase letters, numbers and dashes. `new`, `api`, `assets`, `fonts`, `tags`, `robots`, `index`, `functions`, `admin`, `404`, `mcp` and `oauth` are reserved.
+`"font"` is `"label"` or `"regular"`; leave it out to follow the site default from Settings. The first page is the main page (`"slug": ""`). Addresses use lowercase letters, numbers and dashes. `new`, `api`, `assets`, `fonts`, `tags`, `robots`, `index`, `functions`, `admin`, `404`, `mcp`, `oauth` and `files` are reserved.
 
 ## Getting updates
 

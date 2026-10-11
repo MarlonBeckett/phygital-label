@@ -132,7 +132,7 @@ ok(j.result?.protocolVersion === '2025-06-18' && j.result.capabilities.tools, 'i
 r = await fetch(`${B}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${fresh.access_token}` }, body: '{"jsonrpc":"2.0","method":"notifications/initialized"}' });
 ok(r.status === 202, 'notification → 202');
 j = await rpc('tools/list', {});
-ok(j.result?.tools.length === 5, 'five tools');
+ok(j.result?.tools.length === 6, 'six tools');
 const label = { pages: [
   { slug: '', title: 'Espresso machine', color: '#AD161C', blocks: [{ type: 'text', text: 'Descale monthly.' }, { type: 'menu', label: 'Recipes', page: 'recipes' }] },
   { slug: 'recipes', title: 'Recipes', color: '#161616', blocks: [{ type: 'link', label: 'Flat white', url: '' }] }] };
@@ -219,6 +219,124 @@ await control({ hidden: true });
 j = await api('/api/tags');
 ok(j.status === 502 && j.data.github === 404 && j.data.repo, 'repo out of reach → github 404 + the repo name');
 await control({ hidden: false });
+
+// --------------------------------------------------------------- files ---
+// The browser sends files as base64 text (the server streams it to GitHub).
+const upload = (name, bytes, isPrivate = false) => fetch(`${B}/api/files`, {
+  method: 'POST',
+  headers: { Cookie: cookie, Origin: B, 'Content-Type': 'text/plain', 'X-File-Name': encodeURIComponent(name), 'X-File-Private': isPrivate ? '1' : '0' },
+  body: Buffer.from(bytes).toString('base64')
+}).then(async (x) => ({ status: x.status, data: await x.json() }));
+const pdfBytes = Buffer.from('%PDF-1.4\n% test manual\n');
+let up = await upload('My Manual (v2).pdf', pdfBytes);
+ok(up.status === 200 && up.data.file.name === 'My-Manual-v2.pdf' && /^[a-z0-9]{16}$/.test(up.data.file.id) && !up.data.file.private, 'upload a public file (name cleaned, random id)');
+const pubFile = up.data.file;
+up = await upload('receipt.txt', Buffer.from('Bought 2026-10-11'), true);
+ok(up.status === 200 && up.data.file.private, 'upload a private file');
+const priv = up.data.file;
+ok((await upload('page.html', Buffer.from('<script>alert(1)</script>'))).status === 400, 'risky type refused as public');
+up = await upload('page.html', Buffer.from('<script>alert(1)</script>'), true);
+ok(up.status === 200, 'risky type allowed as private');
+const risky = up.data.file;
+ok((await upload('big.bin', Buffer.alloc(10 * 1024 * 1024 + 3))).status === 413, 'over 10 MB refused');
+ok((await upload('empty.txt', Buffer.alloc(0))).status !== 200, 'empty file refused');
+ok((await upload('feed.rss', Buffer.from('<rss/>'))).status === 400, 'XML-like types refused as public');
+ok((await upload('noext', Buffer.from('x'))).status === 400, 'files without an extension refused as public');
+up = await upload('firmware.zip', Buffer.from('PK'));
+ok(up.status === 200 && !up.data.file.private, 'download types like zip can be public');
+const zipFile = up.data.file;
+up = await upload('big-ok.bin', Buffer.alloc(3 * 1024 * 1024, 7), true);
+r = await fetch(`${B}/api/file/${up.data.file.ref}?private=1`, { headers: { Cookie: cookie } });
+ok(up.status === 200 && Buffer.from(await r.arrayBuffer()).equals(Buffer.alloc(3 * 1024 * 1024, 7)), 'a 3 MB file streams up and back intact');
+const bigFile = up.data.file;
+ok((await fetch(`${B}/api/files`, { method: 'POST', headers: { 'X-File-Name': 'x.txt' }, body: 'x' })).status !== 200, 'upload needs the password');
+
+// A label that shows the public file.
+const fl = `${id}-files`;
+await api(`/api/tag/${fl}`, { method: 'PUT', body: JSON.stringify({ tag: { pages: [{ slug: '', title: 'Files', blocks: [{ type: 'file', label: 'Manual', file: pubFile.ref }] }] } }) });
+j = await api('/api/files');
+const listed = (ref) => j.data.files.find((f) => f.ref === ref);
+res = await call('list_files', {});
+ok(!res.isError && res.content[0].text.includes(pubFile.ref) && /private \(cannot go on labels\)/.test(res.content[0].text), 'Claude can list files (public refs, private marked)');
+ok(j.status === 200 && listed(pubFile.ref) && listed(priv.ref)?.private, 'list shows public and private files');
+ok(JSON.stringify(listed(pubFile.ref).usedBy) === JSON.stringify([fl]), 'list says which labels use a file');
+ok((await api(`/api/tag/${fl}`, { method: 'PUT', body: JSON.stringify({ tag: { pages: [{ slug: '', title: 'x', blocks: [{ type: 'file', file: '../../etc/passwd' }] }] } }) })).status === 400, 'file block must point at an upload');
+
+r = await fetch(`${B}/api/file/${pubFile.ref}`, { headers: { Cookie: cookie } });
+ok(r.status === 200 && r.headers.get('content-type') === 'application/pdf' && /inline/.test(r.headers.get('content-disposition')) && Buffer.from(await r.arrayBuffer()).equals(pdfBytes), 'view a public file');
+r = await fetch(`${B}/api/file/${priv.ref}?private=1`, { headers: { Cookie: cookie } });
+ok(r.status === 200 && (await r.text()) === 'Bought 2026-10-11', 'view a private file');
+r = await fetch(`${B}/api/file/${risky.ref}?private=1`, { headers: { Cookie: cookie } });
+ok(r.headers.get('content-type') === 'application/octet-stream' && /attachment/.test(r.headers.get('content-disposition')) && r.headers.get('x-content-type-options') === 'nosniff', 'risky file always downloads');
+ok((await fetch(`${B}/api/file/${priv.ref}?private=1`)).status === 401, 'private file needs the password');
+ok((await fetch(`${B}/api/file/${pubFile.id}/..%2F..%2Fsecrets?private=1`, { headers: { Cookie: cookie } })).status === 400, 'no path tricks in file names');
+ok((await fetch(`${B}/files/${pubFile.ref}`)).status === 404, 'files are only public on the site after a deploy');
+
+await control({ failMove: true });
+let pr = await api(`/api/file/${priv.ref}`, { method: 'PATCH', body: JSON.stringify({ wasPrivate: true, private: false }) });
+ok(pr.status !== 200, 'an interrupted public/private switch reports it');
+pr = await api(`/api/file/${priv.ref}`, { method: 'PATCH', body: JSON.stringify({ wasPrivate: true, private: false }) });
+ok(pr.status === 200, 'and can simply be tried again');
+j = await api('/api/files');
+ok(listed(priv.ref) && !listed(priv.ref).private, 'and it is listed as public');
+ok(j.data.files.filter((f) => f.ref === priv.ref).length === 1, 'a moved file exists exactly once');
+ok((await api(`/api/file/${risky.ref}`, { method: 'PATCH', body: JSON.stringify({ wasPrivate: true, private: false }) })).status === 400, 'a risky file cannot be made public');
+for (const f of [pubFile, risky, zipFile, bigFile]) await api(`/api/file/${f.ref}?private=${f.private ? 1 : 0}`, { method: 'DELETE' });
+ok((await api(`/api/file/${priv.ref}?private=0`, { method: 'DELETE' })).status === 200, 'delete a file');
+j = await api('/api/files');
+ok(!j.data.files.some((f) => [pubFile.ref, priv.ref, risky.ref].includes(f.ref)), 'deleted files are gone');
+await api(`/api/tag/${fl}`, { method: 'DELETE', body: '{}' });
+
+// ------------------------------------------------- notes anyone can edit ---
+const ve = `${id}-log`;
+const logTag = { pages: [{ slug: '', title: 'Log', blocks: [
+  { type: 'text', text: 'Last oil change: never', editable: true },
+  { type: 'text', text: 'Owner only' }] }] };
+await api(`/api/tag/${ve}`, { method: 'PUT', body: JSON.stringify({ tag: logTag }) });
+fs.writeFileSync(`${root}public/tags/${ve}.json`, JSON.stringify(logTag)); // as if deployed
+await sleep(1500);
+let ip = 0;
+const visit = (body, headers = {}) => fetch(`${B}/api/visitor-edit`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Origin: B, 'CF-Connecting-IP': `198.51.100.${++ip % 250}`, ...headers },
+  body: JSON.stringify({ tag: ve, page: '', block: 0, was: 'Last oil change: never', ...body })
+}).then(async (x) => ({ status: x.status, data: await x.json() }));
+page = await (await fetch(`${B}/${ve}`)).text();
+ok(page.includes('class="lt-edit-btn"') && page.includes('data-edit-block="0"'), 'editable note has an Edit button on the page');
+ok((page.match(/lt-edit-btn/g) || []).length === 1, 'other notes have no Edit button');
+let v = await visit({ text: 'Last oil change: 2026-10-11\nby Sam [click](https://evil.example)' });
+ok(v.status === 200 && v.data.text.startsWith('Last oil change: 2026-10-11'), 'a visitor can edit a marked note (no login)');
+ok((await api(`/api/tag/${ve}`)).data.tag.pages[0].blocks[0].text.includes('by Sam'), 'the edit is saved');
+v = await visit({ text: 'again' });
+ok(v.status === 409 && v.data.changed && v.data.current.includes('by Sam'), 'stale edit refused, with the latest text to edit from');
+r = await fetch(`${B}/api/visitor-edit`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: B }, body: JSON.stringify({ text: 'x'.repeat(30000) }) });
+ok(r.status === 413, 'oversized edit refused before reading it');
+ok((await visit({ block: 1, was: 'Owner only', text: 'hacked' })).status === 403, 'unmarked notes cannot be edited');
+ok((await visit({ was: (await api(`/api/tag/${ve}`)).data.tag.pages[0].blocks[0].text, text: 'x'.repeat(1001) })).status === 400, 'visitor text capped at 1000');
+ok((await visit({ text: 'x' }, { Origin: 'https://evil.example' })).status === 403, 'edits from other sites blocked');
+ok((await fetch(`${B}/api/visitor-edit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status === 403, 'edits without an Origin blocked');
+ok((await visit({ tag: '../x' })).status === 400, 'bad label address refused');
+// Hourly limit per person.
+let cur = (await api(`/api/tag/${ve}`)).data.tag.pages[0].blocks[0].text;
+const same = { 'CF-Connecting-IP': '203.0.113.77' };
+const hourly = [];
+for (let n = 0; n < 7; n++) {
+  const r2 = await visit({ was: cur, text: `edit ${n}` }, same);
+  hourly.push(r2.status);
+  if (r2.status === 200) cur = r2.data.text;
+}
+ok(hourly.slice(0, 6).every((x) => x === 200) && hourly[6] === 429, 'six edits an hour per person', JSON.stringify(hourly));
+// Daily cap for the whole site: 9 earlier edits + 1 real one = the cap of 10,
+// so the next is refused (which also proves real edits are being counted).
+await fetch(`${MOCK}/__control`, { method: 'POST', body: JSON.stringify({ clearCommits: true }) });
+await fetch(`${MOCK}/__control`, { method: 'POST', body: JSON.stringify({ fakeCommits: { count: 9, message: `Visitor edit on /${ve}` } }) });
+v = await visit({ was: cur, text: 'tenth edit today' });
+ok(v.status === 200, 'edits allowed up to the daily cap');
+cur = v.data.text;
+ok((await visit({ was: cur, text: 'eleventh' })).status === 429, 'daily cap for the whole site (counts real edits)');
+await fetch(`${MOCK}/__control`, { method: 'POST', body: JSON.stringify({ clearCommits: true }) });
+await api(`/api/tag/${ve}`, { method: 'DELETE', body: '{}' });
+fs.unlinkSync(`${root}public/tags/${ve}.json`);
 
 // ------------------------------------------------------------ settings ---
 j = await api('/api/settings?health=1');

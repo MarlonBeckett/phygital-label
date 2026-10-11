@@ -5,10 +5,18 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://i.ytimg.com; frame-src https://www.youtube-nocookie.com; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://i.ytimg.com; frame-src 'self' https://www.youtube-nocookie.com; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
 
 /new
   Cache-Control: no-cache
 
 /tags/*
   Cache-Control: no-store
+
+# Uploaded files: no scripts, no plugins, nothing loaded from elsewhere. The
+# site-wide policy is swapped out because its frame-ancestors 'none' stops
+# browsers' built-in PDF viewers from showing the document.
+/files/*
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'
+  Cache-Control: public, max-age=300

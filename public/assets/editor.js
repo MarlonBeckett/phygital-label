@@ -4,7 +4,8 @@
 
 import {
   PRESETS, DEFAULT_COLOR, LIMITS, esc, embossHtml, normColor, isHttpUrl, youtubeId,
-  slugProblem, renderPageHtml, validateTag, ink, nextFreeSlug, backLinkHtml
+  slugProblem, renderPageHtml, validateTag, ink, nextFreeSlug, backLinkHtml,
+  fileKind, formatBytes, MAX_FILE_BYTES, canBePublic, fileExtension
 } from './label.js';
 
 const $ = (id) => document.getElementById(id);
@@ -16,10 +17,11 @@ const ICONS = {
   text: 'M5 6h14M5 11h14M5 16h9',
   video: 'M3 6h18v12H3zM10 9.5v5l4.5-2.5z',
   menu: 'M4 6h16M4 12h16M4 18h10',
-  heading: 'M6 5v14M18 5v14M6 12h12'
+  heading: 'M6 5v14M18 5v14M6 12h12',
+  file: 'M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7'
 };
-const TYPE_NAMES = { link: 'Link', text: 'Text', video: 'Video', menu: 'Menu', heading: 'Heading' };
-const LABEL_HINTS = { link: 'Label, e.g. Manual', menu: 'Menu name', heading: 'Heading text', video: 'Video title' };
+const TYPE_NAMES = { link: 'Link', text: 'Text', video: 'Video', menu: 'Menu', heading: 'Heading', file: 'File' };
+const LABEL_HINTS = { link: 'Label, e.g. Manual', menu: 'Menu name', heading: 'Heading text', video: 'Video title', file: 'Label or caption, e.g. Manual' };
 
 const svg = (path, size = 18, width = 2.2) =>
   `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
@@ -44,7 +46,7 @@ function blankState() {
 }
 
 function newBlock(type, target = '') {
-  return { id: newId('b'), type, label: '', url: '', text: '', color: '', target };
+  return { id: newId('b'), type, label: '', url: '', text: '', color: '', target, file: '', editable: false };
 }
 
 function page() {
@@ -82,11 +84,12 @@ function toData() {
       title: p.title.trim(),
       color: normColor(p.color) || DEFAULT_COLOR,
       blocks: p.blocks.map((b) => {
-        if (b.type === 'text') return { type: 'text', text: b.text };
+        if (b.type === 'text') return { type: 'text', text: b.text, ...(b.editable ? { editable: true } : {}) };
         const out = { type: b.type, label: b.label.trim() };
         if (b.type === 'link' || b.type === 'video') out.url = b.url.trim();
+        if (b.type === 'file') out.file = b.file || '';
         if (b.type === 'menu') out.page = byId.has(b.target) ? byId.get(b.target) : '#missing';
-        if ((b.type === 'link' || b.type === 'menu' || b.type === 'heading') && b.color) out.color = b.color;
+        if ((b.type === 'link' || b.type === 'menu' || b.type === 'heading' || b.type === 'file') && b.color) out.color = b.color;
         return out;
       })
     }))
@@ -115,6 +118,8 @@ function fromData(slug, tag, sha) {
         label: b.label || '',
         url: b.url || '',
         text: b.text || '',
+        file: b.file || '',
+        editable: b.editable === true,
         color: normColor(b.color) || '',
         target: b.type === 'menu' ? (bySlug.get(b.page) || '') : ''
       }))
@@ -241,6 +246,8 @@ function setEmboss(el, text) {
 
 function fillEmboss() {
   document.querySelectorAll('[data-emboss]').forEach((el) => setEmboss(el, el.getAttribute('data-emboss')));
+  // Letters inside an element that has other content (the upload label holds its file input).
+  document.querySelectorAll('[data-emboss-inner]').forEach((el) => { el.innerHTML = embossHtml(el.getAttribute('data-emboss-inner')); });
 }
 
 function setupError(msg) {
@@ -455,13 +462,235 @@ function showTab(name) {
     t.tabIndex = on ? 0 : -1;
   });
   $('panel-labels').hidden = name !== 'labels';
+  $('panel-files').hidden = name !== 'files';
   $('panel-settings').hidden = name !== 'settings';
+  if (name === 'files') loadFiles();
   if (name === 'settings') {
     $('claude-card').open = false; // always starts collapsed
     $('site-font-status').textContent = '';
     loadHealth();
   }
 }
+
+// ---------------------------------------------------------------- files ---
+
+// Uploaded files (public and private). Loaded with the Files tab and when the
+// editor opens (the File block lists the public ones).
+let files = [];
+let filesLoaded = false;
+
+const fileUrl = (f, download = false) =>
+  `/api/file/${f.ref.split('/').map(encodeURIComponent).join('/')}?private=${f.private ? 1 : 0}${download ? '&download=1' : ''}`;
+const publicUrl = (f) => `${location.origin}/files/${f.ref}`;
+
+const FILE_ICONS = {
+  image: 'M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5M15 9.5h.01',
+  video: 'M3 6h13v12H3zM16 10l5-3v10l-5-3',
+  audio: 'M9 18V6l10-2v12M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM19 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z',
+  pdf: 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h6',
+  text: 'M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 15h7M9 18h4',
+  risky: 'M12 3l9 16H3zM12 10v4M12 17h.01',
+  other: 'M6 3h9l4 4v14H6zM14 3v5h5'
+};
+
+async function loadFiles(render = true) {
+  if (render) fileListMessage('Loading your files…');
+  const { status, data } = await api('/api/files');
+  if (status === 401 && data.login) return showLogin('Please unlock again.');
+  if (status !== 200) {
+    if (render) fileListMessage(data.error || 'Could not load your files.');
+    return;
+  }
+  files = data.files || [];
+  filesLoaded = true;
+  if (render) renderFiles();
+  if (!$('screen-editor').hidden) { refreshFileBlocks(); renderLive(); }
+}
+
+// Redraws only the File block cards (their file lists), and not one you're
+// in the middle of using, so typing elsewhere keeps its focus and keyboard.
+function refreshFileBlocks() {
+  const blocks = page().blocks;
+  blocks.forEach((b, i) => {
+    if (b.type !== 'file') return;
+    const card = cardFor(b);
+    if (!card || card.contains(document.activeElement)) return;
+    card.outerHTML = blockCard(b, i, blocks.length);
+  });
+}
+
+function fileListMessage(text) {
+  $('file-count').textContent = '';
+  $('file-list').innerHTML = `<div class="tm-empty"><p class="tm-hint tm-hint-lg">${esc(text)}</p></div>`;
+}
+
+function fileMeta(f) {
+  const where = f.private ? 'Private: only you' : f.usedBy.length ? `Public, on ${f.usedBy.map((s) => `/${s}`).join(', ')}` : 'Public, not on a label yet';
+  return `${formatBytes(f.size)} · ${where}`;
+}
+
+function renderFiles() {
+  const n = files.length;
+  $('file-count').textContent = n === 1 ? '1 file' : `${n} files`;
+  if (!n) return fileListMessage('No files yet. Upload a manual, a photo, a receipt…');
+  $('file-list').innerHTML = files.map((f) => {
+    const thumb = f.kind === 'image'
+      ? `<img class="tm-file-thumb" src="${esc(fileUrl(f))}" alt="" loading="lazy">`
+      : `<span class="tm-file-thumb tm-file-icon">${svg(FILE_ICONS[f.kind] || FILE_ICONS.other, 22, 1.8)}</span>`;
+    return `<div class="tm-item tm-file" data-ref="${esc(f.ref)}">` +
+      `<button type="button" class="tm-file-main" data-file-act="view" aria-label="View ${esc(f.name)}">${thumb}` +
+      `<span class="tm-file-text"><span class="tm-file-name">${esc(f.name)}</span><span class="tm-file-meta">${esc(fileMeta(f))}</span></span></button>` +
+      `<div class="tm-item-actions">` +
+      `<button type="button" class="tm-btn-outline tm-btn-sm" data-file-act="view">View</button>` +
+      `<button type="button" class="tm-btn-outline tm-btn-sm" data-file-act="toggle">${f.private ? 'Make public' : 'Make private'}</button>` +
+      (f.private ? '' : `<button type="button" class="tm-btn-outline tm-btn-sm" data-file-act="copy">Copy link</button>`) +
+      `<button type="button" class="tm-icon-btn tm-remove" data-file-act="delete" aria-label="Delete ${esc(f.name)}">${svg('M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3', 20, 2)}</button>` +
+      `</div></div>`;
+  }).join('');
+}
+
+// Uploads one picked file. `visibility`: 'ask' (Files tab), or 'public' (File block).
+async function uploadPicked(file, visibility, statusEl) {
+  if (!file) return null;
+  if (file.size > MAX_FILE_BYTES) {
+    await tell(`${file.name} is ${formatBytes(file.size)}. Files can be up to ${formatBytes(MAX_FILE_BYTES)}.`);
+    return null;
+  }
+  const kind = fileExtension(file.name) ? `.${fileExtension(file.name)} files` : 'Files without an extension';
+  const publicOk = canBePublic(file.name);
+  let isPrivate = false;
+  if (visibility === 'ask') {
+    const choice = await choose(
+      `Who can see ${file.name}?\n\nPublic files can go on labels, for anyone who taps the sticker to open.\nPrivate files only show here, after unlocking.` +
+      (publicOk ? '' : `\n\n${kind} can only be private: browsers could open them as web pages on your site.`),
+      [...(publicOk ? [{ label: 'Public', value: 'public', style: 'outline' }] : []), { label: 'Private (only me)', value: 'private', style: 'dark' }]
+    );
+    if (!choice) return null;
+    isPrivate = choice === 'private';
+  } else if (!publicOk) {
+    await tell(`${kind} can't go on a label (browsers could open them as web pages on your site). Upload it as a private file in the Files tab instead.`);
+    return null;
+  }
+  statusEl.textContent = `Uploading ${file.name}…`;
+  // Sent as base64 text: the server streams it to GitHub without touching it.
+  const base64 = await new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''));
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+  if (base64 === null) {
+    statusEl.textContent = '';
+    await tell(`Couldn't read ${file.name}. Try again.`);
+    return null;
+  }
+  const res = await fetch('/api/files', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'X-File-Name': encodeURIComponent(file.name), 'X-File-Private': isPrivate ? '1' : '0', 'Content-Type': 'text/plain' },
+    body: base64
+  }).catch(() => null);
+  let data = {};
+  try { data = res ? await res.json() : { error: 'No connection. Check your internet and try again.' }; } catch (e) { data = { error: `Something went wrong (${res.status}).` }; }
+  if (!res || res.status !== 200) {
+    statusEl.textContent = '';
+    if (res && res.status === 401 && data.login) { showLogin('Please unlock again, then upload the file again.'); return null; }
+    await tell(data.error || 'Could not upload that file.');
+    return null;
+  }
+  statusEl.textContent = isPrivate
+    ? `Uploaded ${data.file.name} (private).`
+    : `Uploaded ${data.file.name}. Its public link works in about a minute, once the site updates.`;
+  files = files.filter((f) => f.ref !== data.file.ref).concat(data.file).sort((a, b) => a.name.localeCompare(b.name));
+  return data.file;
+}
+
+$('files-upload').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (await uploadPicked(file, 'ask', $('upload-status'))) renderFiles();
+});
+
+$('file-list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-file-act]');
+  if (!btn) return;
+  const ref = btn.closest('[data-ref]').getAttribute('data-ref');
+  const f = files.find((x) => x.ref === ref);
+  if (!f) return;
+  const act = btn.getAttribute('data-file-act');
+  if (act === 'view') return openViewer(f);
+  if (act === 'copy') {
+    try { await navigator.clipboard.writeText(publicUrl(f)); btn.textContent = 'Copied'; } catch (err) { await tell(publicUrl(f)); }
+    return;
+  }
+  const onLabels = f.usedBy.length ? `\n\nIt's on ${f.usedBy.map((s) => `/${s}`).join(', ')}, which will show it as "coming soon".` : '';
+  const oldCopies = f.private ? '' : '\n\nAnyone who already has its link may still reach copies on older versions of the site for a while.';
+  if (act === 'toggle') {
+    const toPrivate = !f.private;
+    if (toPrivate && !(await ask(`Make ${f.name} private? From now on only you can open it here.${onLabels}${oldCopies}`, { ok: 'Make private' }))) return;
+    btn.disabled = true;
+    const { status, data } = await api(`/api/file/${ref}`, { method: 'PATCH', body: JSON.stringify({ wasPrivate: f.private, private: toPrivate }) });
+    btn.disabled = false;
+    if (status !== 200) return tell(data.error || 'Could not change that file.');
+    f.private = toPrivate;
+    renderFiles();
+    return;
+  }
+  if (act === 'delete') {
+    if (!(await ask(`Delete ${f.name}? This can't be undone here.${onLabels}${oldCopies}`, { ok: 'Delete file', danger: true }))) return;
+    btn.disabled = true;
+    const { status, data } = await api(`/api/file/${ref}?private=${f.private ? 1 : 0}`, { method: 'DELETE' });
+    btn.disabled = false;
+    if (status !== 200 && !data.missing) return tell(data.error || 'Could not delete that file.');
+    files = files.filter((x) => x.ref !== ref);
+    renderFiles();
+  }
+});
+
+// ---- viewer ----
+
+async function openViewer(f) {
+  const body = $('viewer-body');
+  const src = fileUrl(f);
+  $('viewer-name').textContent = f.name;
+  $('viewer-open').href = src;
+  $('viewer-open').hidden = f.kind === 'risky' || f.kind === 'other';
+  $('viewer-download').href = fileUrl(f, true);
+  $('viewer-download').setAttribute('download', f.name);
+  if (f.kind === 'image') body.innerHTML = `<img src="${esc(src)}" alt="${esc(f.name)}">`;
+  else if (f.kind === 'pdf') body.innerHTML = `<iframe src="${esc(src)}" title="${esc(f.name)}"></iframe>`;
+  else if (f.kind === 'video' || f.kind === 'audio') {
+    // Loaded whole, then played from memory: iPhones won't stream media
+    // from an address that doesn't support partial downloads.
+    body.innerHTML = '<p class="tm-hint tm-hint-lg">Loading…</p>';
+    fetch(src, { credentials: 'same-origin' }).then((r) => (r.ok ? r.blob() : Promise.reject())).then((blob) => {
+      if (!$('viewer').open || $('viewer-name').textContent !== f.name) return;
+      viewerObjectUrl = URL.createObjectURL(blob);
+      const el = document.createElement(f.kind);
+      el.src = viewerObjectUrl;
+      el.controls = true;
+      if (f.kind === 'video') el.playsInline = true;
+      body.replaceChildren(el);
+    }, () => { body.innerHTML = '<p class="tm-hint tm-hint-lg">Couldn\'t load it. Try Download instead.</p>'; });
+  }
+  else if (f.kind === 'text') {
+    body.innerHTML = '<pre class="tm-viewer-text">Loading…</pre>';
+    fetch(src, { credentials: 'same-origin' }).then((r) => r.text()).then((t) => { body.querySelector('pre').textContent = t; }, () => {});
+  } else {
+    body.innerHTML = `<p class="tm-hint tm-hint-lg">This kind of file can't be shown here. ${f.kind === 'risky' ? 'It could run code, so it only ever downloads.' : 'Download it to open it.'}</p>`;
+  }
+  $('viewer').showModal();
+}
+
+let viewerObjectUrl = '';
+
+function closeViewer() {
+  $('viewer').close();
+  $('viewer-body').innerHTML = ''; // stops any playing video or audio
+  if (viewerObjectUrl) { URL.revokeObjectURL(viewerObjectUrl); viewerObjectUrl = ''; }
+}
+$('viewer-close').addEventListener('click', closeViewer);
+$('viewer').addEventListener('cancel', (e) => { e.preventDefault(); closeViewer(); });
 
 // ------------------------------------------------------------- settings ---
 
@@ -543,7 +772,9 @@ document.querySelector('.tm-tabs').addEventListener('click', (e) => {
 });
 document.querySelector('.tm-tabs').addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-  const next = $('tab-labels').getAttribute('aria-selected') === 'true' ? 'settings' : 'labels';
+  const order = ['labels', 'files', 'settings'];
+  const now = order.findIndex((n) => $(`tab-${n}`).getAttribute('aria-selected') === 'true');
+  const next = order[(now + (e.key === 'ArrowRight' ? 1 : order.length - 1)) % order.length];
   showTab(next);
   $(`tab-${next}`).focus();
 });
@@ -577,6 +808,7 @@ function openEditor() {
   show('screen-editor');
   renderAll();
   refreshTaken();
+  loadFiles(false); // the File block lists your public files
 }
 
 // Keeps the list of used addresses fresh, so the address field can say
@@ -633,7 +865,12 @@ function renderLive() {
   const hasContent = pageData.title || pageData.blocks.length;
   $('preview').innerHTML = hasContent
     ? (index > 0 ? backLinkHtml(state.tagSlug || 'tag', data.pages[0].title) : '') +
-      renderPageHtml(data, pageData, { tagSlug: state.tagSlug || 'tag', compact: true, siteFont })
+      renderPageHtml(data, pageData, {
+        tagSlug: state.tagSlug || 'tag', compact: true, siteFont,
+        missingFiles: filesLoaded ? new Set(pageData.blocks.filter((b) => b.type === 'file' && b.file && !files.some((f) => !f.private && f.ref === b.file)).map((b) => b.file)) : undefined,
+        // Through the API: a file uploaded a moment ago isn't on the site yet.
+        fileUrl: (ref) => `/api/file/${ref}?private=0`
+      })
     : '<p class="tm-preview-empty">Add a title or a block to see it here.</p>';
 
   const color = normColor(pg.color) || DEFAULT_COLOR;
@@ -833,7 +1070,7 @@ function blockCard(b, i, n) {
   h += '</div>';
 
   if (t !== 'text') {
-    const max = t === 'video' ? LIMITS.videoTitle : LIMITS.label;
+    const max = t === 'video' || t === 'file' ? LIMITS.videoTitle : LIMITS.label;
     h += `<input type="text" data-field="label" value="${esc(b.label)}" placeholder="${esc(LABEL_HINTS[t])}" aria-label="${esc(LABEL_HINTS[t])}" maxlength="${max}">`;
   }
   if (t === 'link') {
@@ -842,8 +1079,13 @@ function blockCard(b, i, n) {
     h += '<p class="tm-hint" data-msg="empty" hidden>No link yet: the strip shows faded and can\'t be tapped until you add one.</p>';
   }
   if (t === 'text') {
-    h += `<textarea data-field="text" rows="5" placeholder="Write anything…" aria-label="Text" maxlength="${LIMITS.text}">${esc(b.text)}</textarea>`;
-    h += '<p class="tm-hint">Add a link inside text like this: <span class="tm-code">[words](https://…)</span></p>';
+    h += `<textarea data-field="text" rows="5" placeholder="Write anything…" aria-label="Text" maxlength="${b.editable ? LIMITS.editableText : LIMITS.text}">${esc(b.text)}</textarea>`;
+    h += b.editable
+      ? `<p class="tm-hint">Links don't work in notes anyone can edit (they show as plain text). Up to ${LIMITS.editableText} characters.</p>`
+      : '<p class="tm-hint">Add a link inside text like this: <span class="tm-code">[words](https://…)</span></p>';
+    h += `<label class="tm-switch-row tm-switch-inline"><span class="tm-switch-text"><span class="tm-switch-title">Anyone can edit</span>` +
+      `<span class="tm-hint">People who tap the sticker can change this note, no login. Every change is kept in GitHub's history.</span></span>` +
+      `<input type="checkbox" class="tm-switch" data-field="editable"${b.editable ? ' checked' : ''}></label>`;
   }
   if (t === 'video') {
     h += `<input type="url" data-field="url" value="${esc(b.url)}" placeholder="YouTube link" aria-label="YouTube link" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="url">`;
@@ -857,7 +1099,23 @@ function blockCard(b, i, n) {
     h += others.map((p) => `<option value="${esc(p.id)}"${p.id === b.target ? ' selected' : ''}>${esc(p.title || (isMain(p) ? 'Main page' : 'Untitled'))}</option>`).join('');
     h += '<option value="__new">+ New page</option></select></div>';
   }
-  if (t === 'link' || t === 'menu' || t === 'heading') {
+  if (t === 'file') {
+    const pub = files.filter((f) => !f.private);
+    const sel = `file-${b.id}`;
+    const known = pub.some((f) => f.ref === b.file);
+    h += `<div class="tm-menu-row"><label for="${esc(sel)}">File</label><select id="${esc(sel)}" data-field="file">`;
+    if (!b.file) h += '<option value="" selected disabled>Choose a public file</option>';
+    else if (!known) h += `<option value="${esc(b.file)}" selected>${esc(b.file.split('/')[1] || 'File')} (not available)</option>`;
+    h += pub.map((f) => `<option value="${esc(f.ref)}"${f.ref === b.file ? ' selected' : ''}>${esc(f.name)} · ${esc(formatBytes(f.size))}</option>`).join('');
+    h += '</select></div>';
+    h += `<label class="tm-btn-outline tm-btn-sm tm-upload-inline">${svg('M12 16V4M6 10l6-6 6 6M4 20h16', 16, 2.2)}Upload a new file` +
+      `<input type="file" class="tm-visually-hidden" data-upload-for="${esc(b.id)}"></label>`;
+    h += '<p class="tm-hint" data-msg="upload" role="status"></p>';
+    h += b.file && !known && files.length
+      ? '<p class="tm-error">That file was deleted or made private, so the page shows it as "coming soon".</p>'
+      : '<p class="tm-hint">Only public files can go on a label. Images, video and audio show on the page; other files open from a strip.</p>';
+  }
+  if (t === 'link' || t === 'menu' || t === 'heading' || t === 'file') {
     const cid = `col-${b.id}`;
     const value = b.color || normColor(pg.color) || DEFAULT_COLOR;
     h += `<div class="tm-color-row"><label for="${esc(cid)}">Color</label>`;
@@ -922,6 +1180,18 @@ $('block-list').addEventListener('input', (e) => {
     card.querySelector('.tm-color-box').style.backgroundColor = b.color;
     card.querySelector('.tm-color-text').textContent = b.color;
     card.querySelector('[data-act="reset-color"]').hidden = false;
+  } else if (field === 'editable') {
+    b.editable = e.target.checked;
+    if (b.editable && b.text.length > LIMITS.editableText) {
+      b.editable = false;
+      e.target.checked = false;
+      tell(`Notes anyone can edit can be up to ${LIMITS.editableText} characters. Shorten this one first (it's ${b.text.length}).`);
+      return;
+    }
+    edited();
+    renderBlocks();
+    renderLive();
+    return;
   } else {
     b[field] = e.target.value;
     updateBlockMessages(b);
@@ -929,8 +1199,30 @@ $('block-list').addEventListener('input', (e) => {
   changed();
 });
 
-$('block-list').addEventListener('change', (e) => {
+$('block-list').addEventListener('change', async (e) => {
   const b = blockFromEvent(e);
+  if (b && e.target.getAttribute('data-field') === 'file') {
+    b.file = e.target.value;
+    edited();
+    renderBlocks();
+    renderLive();
+    return;
+  }
+  if (b && e.target.hasAttribute('data-upload-for')) {
+    const picked = e.target.files && e.target.files[0];
+    e.target.value = '';
+    const status = cardFor(b).querySelector('[data-msg="upload"]');
+    const up = await uploadPicked(picked, 'public', status);
+    if (!up) return;
+    b.file = up.ref;
+    if (!b.label) b.label = up.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').slice(0, LIMITS.videoTitle);
+    edited();
+    renderBlocks();
+    renderLive();
+    const card = cardFor(b);
+    if (card) card.querySelector('[data-msg="upload"]').textContent = status.textContent;
+    return;
+  }
   if (!b || e.target.getAttribute('data-field') !== 'target') return;
   if (e.target.value === '__new') {
     const np = makePage(b.label || 'New page');
@@ -977,7 +1269,7 @@ $('block-list').addEventListener('click', async (e) => {
 });
 
 function renderAddRow() {
-  $('add-row').innerHTML = ['link', 'text', 'video', 'menu', 'heading'].map((t) =>
+  $('add-row').innerHTML = ['link', 'text', 'file', 'video', 'menu', 'heading'].map((t) =>
     `<button type="button" class="tm-add" data-add="${t}">${svg(ICONS[t], 20, 2)}${TYPE_NAMES[t]}</button>`
   ).join('');
 }
@@ -1086,7 +1378,7 @@ async function saveFlow(s, slug, tag) {
 
   // Changed somewhere else since it was opened (another phone, or Claude).
   const choice = await choose(
-    `/${slug} was changed somewhere else since you opened it (on another phone, or by Claude).\n\nOverwrite replaces that version with yours.\nSave as copy keeps both, saving yours at /${alt}.`,
+    `/${slug} was changed somewhere else since you opened it: on another phone, by Claude, or by a visitor editing a note.\n\nOverwrite replaces that version with yours (including any visitor's note changes).\nSave as copy keeps both, saving yours at /${alt}.`,
     [
       { label: 'Save as copy', value: 'copy', style: 'outline' },
       { label: 'Overwrite', value: 'overwrite', style: 'danger' }

@@ -13,14 +13,92 @@ export const PRESETS = [
 export const DEFAULT_COLOR = '#161616';
 
 // Addresses that belong to the site itself and can never be a tag.
-export const RESERVED = ['new', 'api', 'assets', 'fonts', 'tags', 'robots', 'index', 'functions', 'admin', '404', 'mcp', 'oauth'];
+export const RESERVED = ['new', 'api', 'assets', 'fonts', 'tags', 'robots', 'index', 'functions', 'admin', '404', 'mcp', 'oauth', 'files'];
 
 export const LIMITS = {
   slug: 40, title: 40, label: 32, videoTitle: 80, text: 2000, url: 2000,
-  pages: 20, blocks: 60, fileBytes: 100000
+  pages: 20, blocks: 60, fileBytes: 100000,
+  editableText: 1000 // notes anyone can edit
 };
 
-export const BLOCK_TYPES = ['link', 'text', 'video', 'menu', 'heading'];
+// Cleans text a visitor typed into an editable note: no control characters,
+// Windows line ends, or trailing space. (It's always shown as plain text.)
+export function cleanVisitorText(text) {
+  return String(text == null ? '' : text)
+    .replace(/\r\n?|[\u2028\u2029]/g, '\n')
+    // Control, invisible formatting (incl. direction overrides), private-use
+    // and unassigned characters: none belong in a visible note. Kept: line
+    // breaks, tabs, and the joiners that hold emoji and some scripts together.
+    .replace(/[^\P{C}\n\t\u200C\u200D\u{E0020}-\u{E007F}]/gu, '')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim();
+}
+
+export const BLOCK_TYPES = ['link', 'text', 'video', 'menu', 'heading', 'file'];
+
+// ---- Uploaded files ----
+// Public files live at /files/<id>/<name>; a file block stores "<id>/<name>".
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+export const FILE_REF_RE = /^[a-z0-9]{16}\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+export const isFileRef = (ref) => typeof ref === 'string' && FILE_REF_RE.test(ref);
+
+// Types a browser would run as a web page or script on this site's address.
+// They can only be private uploads, and always download.
+export const RISKY_EXTENSIONS = ['html', 'htm', 'xhtml', 'shtml', 'xht', 'svg', 'svgz', 'xml', 'xsl', 'xslt', 'js', 'mjs', 'cjs', 'es', 'wasm', 'swf', 'php'];
+
+export function fileExtension(name) {
+  const m = String(name || '').toLowerCase().match(/\.([a-z0-9]{1,8})$/);
+  return m ? m[1] : '';
+}
+
+const KINDS = {
+  image: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp'],
+  video: ['mp4', 'webm', 'mov', 'm4v'],
+  audio: ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'oga', 'opus', 'flac'],
+  pdf: ['pdf'],
+  text: ['txt', 'csv', 'md', 'json', 'log']
+};
+
+// Files that can be public: ones browsers show safely (KINDS below) plus
+// common download-only types. Anything else (XML-like feeds, unknown or no
+// extension) can only be private, so nothing on the site can render as a page.
+const DOWNLOADS = [
+  'zip', '7z', 'rar', 'gz', 'tgz', 'tar', 'bz2', 'xz',
+  'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'pages', 'numbers', 'key', 'epub',
+  'stl', 'step', 'stp', 'obj', '3mf', 'gcode', 'dxf', 'dwg', 'bin', 'hex', 'uf2', 'img', 'iso',
+  'apk', 'exe', 'msi', 'dmg', 'pkg', 'deb', 'rpm',
+  'heic', 'heif', 'tif', 'tiff', 'dng', 'psd', 'ai', 'eps', 'ttf', 'otf', 'woff', 'woff2', 'mid', 'midi', 'srt', 'vtt'
+];
+export function canBePublic(name) {
+  const ext = fileExtension(name);
+  return !!ext && (DOWNLOADS.includes(ext) || Object.values(KINDS).some((list) => list.includes(ext)));
+}
+
+// 'image' | 'video' | 'audio' | 'pdf' | 'text' | 'risky' | 'other'
+export function fileKind(name) {
+  const ext = fileExtension(name);
+  if (RISKY_EXTENSIONS.includes(ext)) return 'risky';
+  for (const [kind, list] of Object.entries(KINDS)) if (list.includes(ext)) return kind;
+  return 'other';
+}
+
+// A safe file name for the repo and the address: letters, digits, dots,
+// dashes and underscores, extension kept, at most 100 characters.
+export function safeFileName(name) {
+  const base = String(name || '').split(/[\\/]/).pop().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  const ext = fileExtension(base);
+  let stem = (ext ? base.slice(0, -(ext.length + 1)) : base)
+    .replace(/\s+/g, '-').replace(/[^A-Za-z0-9._-]/g, '').replace(/-{2,}/g, '-').replace(/^[._-]+/, '').replace(/[._-]+$/, '');
+  stem = stem.slice(0, 100 - (ext ? ext.length + 1 : 0)) || 'file';
+  return ext ? `${stem}.${ext}` : stem;
+}
+
+export function formatBytes(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
 
 // Text style for a whole tag: the label font everywhere, or a regular font
 // for reading text (titles and strips always stay label tape). A tag without
@@ -222,6 +300,27 @@ const MENU_ICON = (fg) => `<svg class="lt-menu-icon" aria-hidden="true" viewBox=
 
 const PLAY_ICON = '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z" fill="#161616"/></svg>';
 
+// A tape strip that opens `href` (a strip with no href shows as "coming soon").
+function linkStrip(label, href, color, key) {
+  const { c, tilt, shift } = stripVars(color, key);
+  const style = `background-color:${color};transform:rotate(${tilt}deg) translateX(${shift}px);${fitStyle(label.length + 1, 48)}`;
+  const lines = splitLines(label, LINE_MAX.strip);
+  if (lines.length > 1) {
+    const fit = fitStyle(longest(lines) + 1, 48);
+    const tapes = lines.map((ln, i) =>
+      `<span class="lt-strip lt-tape" style="background-color:${color};${lineTilt(key, i)};${fit}">` +
+      `${letters(ln, c, href && i === lines.length - 1 ? '<span class="lt-chev">›</span>' : '')}</span>`
+    ).join('');
+    if (!href) return `<span class="lt-stack lt-pending" role="img" aria-label="${esc(label)} (coming soon)">${tapes}</span>`;
+    return `<a class="lt-stack" href="${esc(href)}" aria-label="${esc(label)}">${tapes}</a>`;
+  }
+  if (!href) {
+    // Placeholder: no address yet, so it shows but cannot be tapped.
+    return `<span class="lt-strip lt-tape lt-pending" role="img" aria-label="${esc(label)} (coming soon)" style="${style}">${letters(label, c)}</span>`;
+  }
+  return `<a class="lt-strip lt-tape" href="${esc(href)}" aria-label="${esc(label)}" style="${style}">${letters(label, c, '<span class="lt-chev">›</span>')}</a>`;
+}
+
 function blockHtml(b, i, ctx) {
   const pageColor = ctx.color;
   const color = normColor(b.color) || pageColor;
@@ -238,27 +337,8 @@ function blockHtml(b, i, ctx) {
     return `<h2 class="lt-heading lt-tape" aria-label="${esc(b.label)}" style="background-color:${color};transform:rotate(${tilt}deg)">${letters(b.label, c)}</h2>`;
   }
 
-  if (b.type === 'link') {
-    const { c, tilt, shift } = stripVars(color, key);
-    const label = b.label || 'Link';
-    const style = `background-color:${color};transform:rotate(${tilt}deg) translateX(${shift}px);${fitStyle(label.length + 1, 48)}`;
-    const lines = splitLines(label, LINE_MAX.strip);
-    if (lines.length > 1) {
-      const live = isHttpUrl(b.url);
-      const fit = fitStyle(longest(lines) + 1, 48);
-      const tapes = lines.map((ln, i) =>
-        `<span class="lt-strip lt-tape" style="background-color:${color};${lineTilt(key, i)};${fit}">` +
-        `${letters(ln, c, live && i === lines.length - 1 ? '<span class="lt-chev">›</span>' : '')}</span>`
-      ).join('');
-      if (!live) return `<span class="lt-stack lt-pending" role="img" aria-label="${esc(label)} (coming soon)">${tapes}</span>`;
-      return `<a class="lt-stack" href="${esc(b.url)}" aria-label="${esc(label)}">${tapes}</a>`;
-    }
-    if (!isHttpUrl(b.url)) {
-      // Placeholder: no address yet, so it shows but cannot be tapped.
-      return `<span class="lt-strip lt-tape lt-pending" role="img" aria-label="${esc(label)} (coming soon)" style="${style}">${letters(label, c)}</span>`;
-    }
-    return `<a class="lt-strip lt-tape" href="${esc(b.url)}" aria-label="${esc(label)}" style="${style}">${letters(label, c, '<span class="lt-chev">›</span>')}</a>`;
-  }
+  if (b.type === 'link') return linkStrip(b.label || 'Link', isHttpUrl(b.url) ? b.url : '', color, key);
+
 
   if (b.type === 'menu') {
     const { c, tilt, shift } = stripVars(color, key);
@@ -288,6 +368,13 @@ function blockHtml(b, i, ctx) {
     const r = rng(key);
     const tilt = ((r() - 0.5) * 0.9).toFixed(2);
     const linkColor = luminance(pageColor) > 0.18 ? '#1A1A1A' : pageColor;
+    if (b.editable) {
+      // Anyone can edit this note, so it's always plain text: no links.
+      const where = `data-edit-tag="${esc(ctx.tagSlug)}" data-edit-page="${esc(ctx.pageSlug)}" data-edit-block="${i}"`;
+      const control = '<div class="lt-edit-row"><span class="lt-edit-badge">Anyone can edit</span>' +
+        (ctx.visitorEdit ? '<button type="button" class="lt-edit-btn" data-edit-open>Edit</button>' : '') + '</div>';
+      return `<div class="lt-note lt-editable" ${where} style="transform:rotate(${tilt}deg);--link:${linkColor}"><p>${esc(b.text)}</p>${control}</div>`;
+    }
     return `<div class="lt-note" style="transform:rotate(${tilt}deg);--link:${linkColor}"><p>${richTextHtml(b.text)}</p></div>`;
   }
 
@@ -303,6 +390,26 @@ function blockHtml(b, i, ctx) {
       `<span class="lt-play">${PLAY_ICON}</span></a>${caption}</div>`;
   }
 
+  if (b.type === 'file') {
+    // An uploaded file: images and media play inline, anything else opens
+    // from a strip. A missing or private file shows as "coming soon".
+    const ref = isFileRef(b.file) && !ctx.missingFiles.has(b.file) ? b.file : '';
+    const href = ref ? ctx.fileUrl(ref) : '';
+    const name = ref ? ref.split('/')[1] : '';
+    const caption = b.label ? `<p class="lt-caption">${esc(b.label)}</p>` : '';
+    const kind = fileKind(name);
+    if (href && kind === 'image') {
+      return `<figure class="lt-media lt-image"><a href="${esc(href)}" aria-label="${esc(b.label || name)} (open full size)"><img src="${esc(href)}" alt="${esc(b.label || '')}" loading="lazy" decoding="async"></a>${caption}</figure>`;
+    }
+    if (href && kind === 'video') {
+      return `<figure class="lt-media lt-video-file"><video src="${esc(href)}" controls preload="metadata" playsinline></video>${caption}</figure>`;
+    }
+    if (href && kind === 'audio') {
+      return `<figure class="lt-media lt-audio">${caption}<audio src="${esc(href)}" controls preload="none"></audio></figure>`;
+    }
+    return linkStrip(b.label || name || 'File', href, color, key);
+  }
+
   return '';
 }
 
@@ -314,10 +421,17 @@ export function backLinkHtml(tagSlug, mainTitle) {
 }
 
 // HTML for one page of a tag: the title tape plus its blocks.
-// tag: { pages: [...] }, page: one of tag.pages, opts: { tagSlug, compact, siteFont }
+// tag: { pages: [...] }, page: one of tag.pages,
+// opts: { tagSlug, compact, siteFont, fileUrl, missingFiles, visitorEdit }
 export function renderPageHtml(tag, page, opts = {}) {
   const color = normColor(page.color) || DEFAULT_COLOR;
-  const ctx = { color, pages: tag.pages || [], tagSlug: opts.tagSlug || '' };
+  const ctx = {
+    color, pages: tag.pages || [], tagSlug: opts.tagSlug || '', pageSlug: page.slug || '',
+    visitorEdit: !!opts.visitorEdit, // the live page shows Edit buttons; the preview a badge
+    // The editor previews files through the API (they're live there at once).
+    fileUrl: opts.fileUrl || ((ref) => `/files/${ref}`),
+    missingFiles: opts.missingFiles || new Set() // deleted or private: shown as "coming soon"
+  };
   const title = page.title || '';
   let html = `<div class="lt-blocks${opts.compact ? ' lt-compact' : ''}${fontOf(tag, opts.siteFont) === 'regular' ? ' lt-regular' : ''}">`;
   const titleLines = splitLines(title, LINE_MAX.title);
@@ -377,11 +491,14 @@ export function validateTag(input) {
       const url = str(b.url).trim();
       if (type === 'text') {
         const text = str(b.text);
-        if (text.length > LIMITS.text) fail(`${where}: text is longer than ${LIMITS.text} characters.`);
+        const editable = b.editable === true;
+        const max = editable ? LIMITS.editableText : LIMITS.text;
+        if (text.length > max) fail(`${where}: text is longer than ${max} characters${editable ? ' (the limit for notes anyone can edit)' : ''}.`);
         out.text = text;
+        if (editable) out.editable = true;
         return out;
       }
-      const max = type === 'video' ? LIMITS.videoTitle : LIMITS.label;
+      const max = type === 'video' || type === 'file' ? LIMITS.videoTitle : LIMITS.label;
       if (label.length > max) fail(`${where}: the label is longer than ${max} characters.`);
       out.label = label;
       if (type === 'link') {
@@ -393,7 +510,12 @@ export function validateTag(input) {
         out.url = url;
       }
       if (type === 'menu') out.page = str(b.page);
-      if (type === 'link' || type === 'menu' || type === 'heading') {
+      if (type === 'file') {
+        const file = str(b.file).trim();
+        if (file && !isFileRef(file)) fail(`${where}: that file isn't one of your uploads.`);
+        out.file = file;
+      }
+      if (type === 'link' || type === 'menu' || type === 'heading' || type === 'file') {
         const c = normColor(b.color);
         if (b.color && !c) fail(`${where}: that colour is not valid.`);
         if (c) out.color = c;
