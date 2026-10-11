@@ -1,0 +1,13 @@
+{
+  "name": "Phygital label maker",
+  "short_name": "Labels",
+  "start_url": "/new",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#E4E2DC",
+  "background_color": "#E4E2DC",
+  "icons": [
+    { "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

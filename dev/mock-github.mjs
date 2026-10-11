@@ -45,6 +45,7 @@ http.createServer(async (req, res) => {
   if (req.url === '/__control') {
     if (body.reset) control = { expired: false, failPut: new Map() };
     if ('expired' in body) control.expired = !!body.expired;
+    if ('hidden' in body) control.hidden = !!body.hidden; // the token can't see the repo
     if (body.failPut) body.failPut.forEach((f) => (typeof f === 'string' ? control.failPut.set(f, 500) : control.failPut.set(f.name, f.status)));
     if (body.put) files.set(body.put.name, { text: body.put.text, sha: sha(body.put.text) });
     if (body.remove) files.delete(body.remove);
@@ -52,6 +53,10 @@ http.createServer(async (req, res) => {
   }
 
   if (control.expired) return send(res, 401, { message: 'Bad credentials' });
+  if (control.hidden) {
+    if (req.url === '/graphql') return send(res, 200, { data: { repository: null }, errors: [{ type: 'NOT_FOUND', message: 'Could not resolve to a Repository' }] });
+    return send(res, 404, { message: 'Not Found' });
+  }
 
   if (req.url === '/graphql') {
     const entries = [...files].sort().map(([name, f]) => ({ name, oid: f.sha, object: { text: f.text } }));

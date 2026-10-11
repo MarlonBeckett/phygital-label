@@ -45,7 +45,7 @@ Remember the name shown at the top of your new repo, written like `your-name/my-
    - **Production branch:** `main`
    - **Framework preset:** `None`
    - **Build command:** leave **empty**
-   - **Build output directory:** `public`
+   - **Build output directory:** `public` (exactly that: not blank, not `/`). If this is wrong, the bare address shows a 404 and the whole repo, including your raw label files, gets published. A right build log says it uploaded about 20 files, not 30+.
 7. Click **Save and Deploy**. After a minute your site is live at `https://project-name.pages.dev`. If the address ends in `.workers.dev` instead, you made a Worker by mistake: delete it and start this step again with **Continue to Pages**.
 
 ### 3. Create the GitHub key the phygital label maker uses to save
@@ -58,9 +58,11 @@ The phygital label maker saves your tags into your repo. To do that it needs a k
 4. Fill it in:
    - **Token name:** `phygital label maker`
    - **Expiration:** choose the longest option offered (pick **No expiration** if you see it). If you have to choose an end date, put a reminder in your calendar to make a new token before then.
-   - **Repository access:** **Only select repositories**, then choose `my-tags`.
-   - **Permissions → Repository permissions → Contents:** set to **Read and write**. ("Metadata: Read-only" is added automatically. That's fine.) Leave everything else alone.
+   - **Repository access:** **Only select repositories**, then choose `my-tags`. (The default, "Public repositories", can't see a private repo, and the label maker then says it can't find your repo.)
+   - **Permissions:** click **Add permissions**, tick **Contents**, then change its dropdown from Read-only to **Read and write**. ("Metadata: Read-only" may appear by itself. That's fine.) Leave everything else alone. Check the Repositories tab shows at least 1 permission: with 0, the token can't see anything.
 5. Click **Generate token** and **copy the token right away**. It starts with `github_pat_`, and GitHub only shows it once.
+
+To change a token's repos or permissions later, edit it and click **Update**. Don't click **Regenerate** unless you mean to: that makes a new value, the old one stops working at once, and you'd have to paste the new one into Cloudflare (step 4).
 
 ### 4. Add the three settings to Cloudflare
 
@@ -211,11 +213,17 @@ When you save, the server checks everything again, then commits `public/tags/<ad
 
 `"font"` is `"label"` or `"regular"`; leave it out to follow the site default from Settings. The first page is the main page (`"slug": ""`). Addresses use lowercase letters, numbers and dashes. `new`, `api`, `assets`, `fonts`, `tags`, `robots`, `index`, `functions`, `admin`, `404`, `mcp` and `oauth` are reserved.
 
+## Getting updates
+
+Your copy doesn't update itself when this template changes (GitHub templates copy the files once). To get a fix later, copy the changed files from the template into your repo on GitHub, or ask Claude to do it. Only code moves that way: your labels (`public/tags/`) and settings stay in your private repo and never go back into the template.
+
 ## Troubleshooting
 
-- **"ADMIN_PASSWORD is not set"**: add it in Cloudflare (step 4), then **Retry deployment**.
-- **"Your GitHub key has expired"** (or **"GitHub did not accept GITHUB_TOKEN"**): your labels and stickers keep working, but making and changing labels needs a new token. The label maker shows the steps when this happens, and warns you 14 days ahead: make a new token (step 3), replace `GITHUB_TOKEN` in Cloudflare, and retry the latest deployment.
-- **"GitHub could not find the repo"**: check `GITHUB_REPO` is exactly `your-name/my-tags`, and that the token was given access to that repo.
+- **"Variables cannot be added to a Worker that only has static assets"**: you made a Cloudflare *Worker*, not a *Pages* project. Delete it and redo step 2 using the small **Continue to Pages** link.
+- **The bare address shows a 404**, or the build log uploaded 30+ files: the **Build output directory** isn't `public`. Fix it in the project's **Settings › Build**, then retry the deployment.
+- **"ADMIN_PASSWORD is not set"**: add it in Cloudflare (step 4), then **Retry deployment**. Changing any setting only takes effect after a new deployment.
+- **"GitHub isn't accepting the site's key"** (or **"GitHub did not accept GITHUB_TOKEN"**): the token expired, was regenerated or deleted on GitHub, or was pasted wrong. Your labels and stickers keep working; only making and changing labels is blocked. Put the token's current value (or a new token, step 3) into `GITHUB_TOKEN` in Cloudflare and retry the latest deployment. The label maker warns you 14 days before a token expires.
+- **"The site can't reach your labels repo"** (or **"GitHub could not find the repo"**): GitHub accepts the token, but it can't see the repo. Usually the token's **Repository access** doesn't include your repo, or it has no **Contents** permission (step 3). Edit the token, fix it and click **Update**: no redeploy needed, just tap Check again. If the card names the wrong repo, fix `GITHUB_REPO` in Cloudflare and retry the deployment.
 - **Saved, but the page says "Nothing here"**: wait a minute for Cloudflare to finish redeploying. You can watch it on the project's **Deployments** tab.
 - **"Too many wrong tries"**: wait 15 minutes.
 

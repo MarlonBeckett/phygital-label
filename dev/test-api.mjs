@@ -214,6 +214,11 @@ j = await api('/api/tags');
 ok(j.status === 502 && j.data.github === 401 && j.data.repo, 'expired token → github 401 for the menu');
 ok((await fetch(`${B}/new`)).status === 200, 'the site itself still loads');
 await control({ expired: false });
+// The token works but can't see the repo (or GITHUB_REPO is wrong).
+await control({ hidden: true });
+j = await api('/api/tags');
+ok(j.status === 502 && j.data.github === 404 && j.data.repo, 'repo out of reach → github 404 + the repo name');
+await control({ hidden: false });
 
 // ------------------------------------------------------------ settings ---
 j = await api('/api/settings?health=1');

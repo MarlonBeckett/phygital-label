@@ -317,23 +317,48 @@ function homeMessage(text, retry) {
 // nobody remembers how this was set up.
 let githubRepo = '';
 
+// kind: 'bad' (GitHub rejects the key), 'warn' (it expires soon) or
+// 'access' (the key works but can't reach the repo, or GITHUB_REPO is wrong).
 function tokenHelpHtml(kind, expires = '') {
   const when = expires ? new Date(expires) : null;
   const days = when ? Math.ceil((when - Date.now()) / 86400000) : 0;
   const date = when ? when.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) : '';
-  const title = kind === 'bad'
-    ? 'Your GitHub key has expired'
-    : `Your GitHub key expires in ${days} day${days === 1 ? '' : 's'}`;
-  const intro = kind === 'bad'
-    ? 'Your labels and stickers still work. To make or change labels, give the site a new GitHub key. It takes about 2 minutes:'
-    : `Everything works until ${date}. Replace the key before then so saving keeps working. It takes about 2 minutes:`;
   const repo = githubRepo ? `<span class="tm-code">${esc(githubRepo)}</span>` : 'your labels repo';
-  return `<div class="tm-notice tm-notice-${kind}">` +
-    `<h2 class="tm-notice-title">${esc(title)}</h2><p>${esc(intro)}</p><ol>` +
-    `<li>On GitHub, <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">make a new fine-grained token</a>. Under <strong>Repository access</strong> pick only ${repo}, set <strong>Contents</strong> to <strong>Read and write</strong>, and choose the longest expiry. Copy the token.</li>` +
-    `<li>In <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">Cloudflare</a>, open <strong>Workers &amp; Pages</strong>, then this site's project (${esc(location.host)}), then <strong>Settings › Variables and Secrets</strong>. Edit <strong>GITHUB_TOKEN</strong>, paste the new token and save.</li>` +
-    `<li>Open <strong>Deployments</strong>, tap <strong>⋯</strong> on the latest one and choose <strong>Retry deployment</strong>. After a minute, tap Check again.</li>` +
-    `</ol><button type="button" class="tm-btn-outline" data-recheck>Check again</button></div>`;
+  const host = esc(location.host);
+  const cloudflare = `In <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">Cloudflare</a>, open <strong>Workers &amp; Pages</strong>, then this site's project (${host}), then <strong>Settings › Variables and Secrets</strong>`;
+  const redeploy = `<li>Open <strong>Deployments</strong>, tap <strong>⋯</strong> on the latest one and choose <strong>Retry deployment</strong>. After a minute, tap Check again.</li>`;
+  let title;
+  let intro;
+  let steps;
+  if (kind === 'access') {
+    title = 'The site can\'t reach your labels repo';
+    intro = 'Your labels and stickers still work. GitHub accepts the site\'s key, but the key can\'t see the repo the site is set to use:';
+    steps =
+      `<li>The site is set to use ${repo}. If that's not your labels repo, ${cloudflare}, set <strong>GITHUB_REPO</strong> to your repo (like <span class="tm-code">your-name/my-tags</span>), then retry the deployment (step 3).</li>` +
+      `<li>On GitHub, open <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener">your fine-grained tokens</a> and the site's token. Under <strong>Repository access</strong> make sure ${repo} is included, and set <strong>Contents</strong> to <strong>Read and write</strong>. Save (don't regenerate). This takes effect straight away.</li>` +
+      redeploy;
+  } else {
+    title = kind === 'bad' ? 'GitHub isn\'t accepting the site\'s key' : `Your GitHub key expires in ${days} day${days === 1 ? '' : 's'}`;
+    intro = kind === 'bad'
+      ? 'Your labels and stickers still work. To make or change labels, the site needs a working GitHub key. The key may have expired, been regenerated or deleted on GitHub, or been pasted wrong. It takes about 2 minutes:'
+      : `Everything works until ${date}. Replace the key before then so saving keeps working. It takes about 2 minutes:`;
+    steps =
+      `<li>On GitHub, <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">make a new fine-grained token</a> (or copy the new value if you just regenerated it). Under <strong>Repository access</strong> pick only ${repo}, set <strong>Contents</strong> to <strong>Read and write</strong>, and choose the longest expiry. Copy the token.</li>` +
+      `<li>${cloudflare}. Edit <strong>GITHUB_TOKEN</strong>, paste the token and save.</li>` +
+      redeploy;
+  }
+  const look = kind === 'warn' ? 'warn' : 'bad';
+  return `<div class="tm-notice tm-notice-${look}">` +
+    `<h2 class="tm-notice-title">${esc(title)}</h2><p>${esc(intro)}</p><ol>${steps}</ol>` +
+    `<button type="button" class="tm-btn-outline" data-recheck>Check again</button></div>`;
+}
+
+// Which fix-it card fits a GitHub error: 401 = the key is rejected,
+// 403/404 = the key can't reach the repo (or GITHUB_REPO is wrong).
+function githubFixKind(status) {
+  if (status === 401) return 'bad';
+  if (status === 403 || status === 404) return 'access';
+  return '';
 }
 
 function showTokenNotice(kind, expires) {
@@ -352,9 +377,10 @@ async function loadLabels() {
   if (status === 401 && data.login) return showLogin('Please unlock again.');
   if (data.repo) githubRepo = data.repo;
   if (status !== 200) {
-    if (data.github === 401) {
-      showTokenNotice('bad');
-      return homeMessage('Your labels can\'t be listed until the GitHub key is replaced (see above). They still work on your stickers.');
+    const kind = githubFixKind(data.github);
+    if (kind) {
+      showTokenNotice(kind);
+      return homeMessage('Your labels can\'t be listed until GitHub is sorted out (see above). They still work on your stickers.');
     }
     showTokenNotice('');
     return homeMessage(data.error || 'Could not load your labels.', !data.setup);
@@ -1141,9 +1167,9 @@ $('save-btn').addEventListener('click', async () => {
     return;
   }
   if (res.data.setup) return showSaveErrors(['The site is not set up yet:', res.data.error]);
-  if (res.data.github === 401) {
+  if (githubFixKind(res.data.github)) {
     const box = $('save-errors');
-    box.innerHTML = tokenHelpHtml('bad');
+    box.innerHTML = tokenHelpHtml(githubFixKind(res.data.github));
     box.hidden = false;
     box.scrollIntoView({ block: 'center', behavior: 'smooth' });
     return;

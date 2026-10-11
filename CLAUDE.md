@@ -13,6 +13,11 @@ owner does not code: explain steps in plain language.
 - `GITHUB_TOKEN` / `GITHUB_REPO` / `ADMIN_PASSWORD` stay server-side.
 - The public template must contain no personal info and exactly one fake
   example tag (`public/tags/example.json`).
+- Personal copies (made with "Use this template") are separate repos with
+  their own history. When syncing a fix into one, copy only code/docs files
+  from the template, after checking the copy's versions weren't edited.
+  Never copy anything from a personal copy back into the template, above all
+  `public/tags/*` (labels) and `public/tags/_settings.json`.
 - Don't use the browser's `confirm()` / `alert()`: some in-app browsers block
   them silently. Use `ask()` / `choose()` / `tell()` in `editor.js`.
 

@@ -1,5 +1,5 @@
 {
   "version": 1,
   "include": ["/*"],
-  "exclude": ["/", "/new", "/new.html", "/assets/*", "/fonts/*", "/robots.txt", "/favicon.ico", "/404.html"]
+  "exclude": ["/", "/new", "/new.html", "/assets/*", "/fonts/*", "/robots.txt", "/favicon.ico", "/favicon-16x16.png", "/favicon-32x32.png", "/apple-touch-icon.png", "/android-chrome-192x192.png", "/android-chrome-512x512.png", "/site.webmanifest", "/404.html"]
 }
