@@ -20,6 +20,10 @@ owner does not code: explain steps in plain language.
   `public/tags/*` (labels) and `public/tags/_settings.json`.
 - Don't use the browser's `confirm()` / `alert()`: some in-app browsers block
   them silently. Use `ask()` / `choose()` / `tell()` in `editor.js`.
+- Read the site's own deployed files (labels, settings, uploads) only through
+  `readAsset()` in `lib/assets.js`, never `env.ASSETS.fetch` directly: on the
+  live main address Cloudflare served a deleted label from cache long after
+  new deployments; the unique query string avoids that.
 
 ## Where things are
 - `public/assets/label.js` – the one renderer for tape strips (emboss jitter,
@@ -42,7 +46,9 @@ owner does not code: explain steps in plain language.
   with ADMIN_PASSWORD plus the settings `epoch` ("Sign out everywhere" bumps
   it, which also invalidates login cookies).
 - `functions/api/*` – the label maker's API (session-protected), except
-  `visitor-edit.js` (no login; see `lib/visitor.js` for its limits).
+  `visitor-edit.js` and `visitor-upload.js` (no login; see `lib/visitor.js`
+  for their limits). Visitor uploads commit the file and the label together
+  via `commitChanges` (Git Data API) on top of the exact version read.
 - `lib/files.js` – uploads: public in `public/files/<id>/<name>` (served as
   static files with their own strict CSP in `_headers`), private in `files/`
   (never deployed; read through `/api/file/…`). HTML/SVG/JS-like types are

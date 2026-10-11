@@ -18,7 +18,8 @@ export const RESERVED = ['new', 'api', 'assets', 'fonts', 'tags', 'robots', 'ind
 export const LIMITS = {
   slug: 40, title: 40, label: 32, videoTitle: 80, text: 2000, url: 2000,
   pages: 20, blocks: 60, fileBytes: 100000,
-  editableText: 1000 // notes anyone can edit
+  editableText: 1000, // notes anyone can edit
+  stack: 50 // files in one file stack
 };
 
 // Cleans text a visitor typed into an editable note: no control characters,
@@ -35,7 +36,7 @@ export function cleanVisitorText(text) {
     .trim();
 }
 
-export const BLOCK_TYPES = ['link', 'text', 'video', 'menu', 'heading', 'file'];
+export const BLOCK_TYPES = ['link', 'text', 'video', 'menu', 'heading', 'file', 'files'];
 
 // ---- Uploaded files ----
 // Public files live at /files/<id>/<name>; a file block stores "<id>/<name>".
@@ -390,6 +391,28 @@ function blockHtml(b, i, ctx) {
       `<span class="lt-play">${PLAY_ICON}</span></a>${caption}</div>`;
   }
 
+  if (b.type === 'files') {
+    // A file stack: a list of files (photos as thumbnails) that visitors can
+    // open, and add to when the owner switched on "Anyone can upload".
+    const refs = (Array.isArray(b.files) ? b.files : []).filter((r) => isFileRef(r) && !ctx.missingFiles.has(r));
+    const where = `data-stack-tag="${esc(ctx.tagSlug)}" data-stack-page="${esc(ctx.pageSlug)}" data-stack-block="${i}"`;
+    const items = refs.map((ref) => {
+      const name = ref.split('/')[1];
+      const kind = fileKind(name);
+      const href = ctx.fileUrl(ref);
+      const thumb = kind === 'image'
+        ? `<img src="${esc(href)}" alt="" loading="lazy" decoding="async">`
+        : `<span class="lt-file-type">${esc(fileExtension(name).toUpperCase() || 'FILE')}</span>`;
+      return `<li><a class="lt-file-card" href="${esc(href)}" data-kind="${kind}" data-name="${esc(name)}">${thumb}<span class="lt-file-label">${esc(name)}</span></a></li>`;
+    }).join('');
+    const empty = refs.length ? '' : `<p class="lt-stack-empty">No files yet.</p>`;
+    const add = !b.uploads ? '' : ctx.visitorEdit
+      ? '<div class="lt-edit-row"><span class="lt-edit-badge">Anyone can upload</span><label class="lt-edit-btn lt-upload-btn">Add a file<input type="file" class="lt-upload-input" data-stack-upload></label></div>'
+      : '<div class="lt-edit-row"><span class="lt-edit-badge">Anyone can upload</span></div>';
+    const caption = b.label ? `<p class="lt-caption">${esc(b.label)}</p>` : '';
+    return `<section class="lt-files" ${where} aria-label="${esc(b.label || 'Files')}">${caption}<ul class="lt-file-stack">${items}</ul>${empty}${add}</section>`;
+  }
+
   if (b.type === 'file') {
     // An uploaded file: images and media play inline, anything else opens
     // from a strip. A missing or private file shows as "coming soon".
@@ -514,6 +537,13 @@ export function validateTag(input) {
         const file = str(b.file).trim();
         if (file && !isFileRef(file)) fail(`${where}: that file isn't one of your uploads.`);
         out.file = file;
+      }
+      if (type === 'files') {
+        const list = Array.isArray(b.files) ? b.files.map(str) : [];
+        if (list.some((f) => !isFileRef(f))) fail(`${where}: a file in the stack isn't one of your uploads.`);
+        if (list.length > LIMITS.stack) fail(`${where}: a file stack can have at most ${LIMITS.stack} files.`);
+        out.files = [...new Set(list.filter(isFileRef))].slice(0, LIMITS.stack);
+        if (b.uploads === true) out.uploads = true;
       }
       if (type === 'link' || type === 'menu' || type === 'heading' || type === 'file') {
         const c = normColor(b.color);

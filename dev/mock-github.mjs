@@ -26,11 +26,14 @@ const sha = (bytes) => crypto.createHash('sha1').update(Buffer.concat([Buffer.fr
 const store = (path, bytes) => { const s = sha(bytes); blobs.set(s, bytes); files.set(path, { bytes, sha: s }); };
 // Git Data API stand-in: trees and commits are just recorded changes.
 let head = crypto.randomBytes(20).toString('hex');
+const snapshots = new Map(); // commit sha → the files as of that commit (for ?ref=)
+function newHead() { head = crypto.randomBytes(20).toString('hex'); snapshots.set(head, new Map(files)); }
 const trees = new Map();   // tree sha → [{ path, sha }]
 const gitCommits = new Map(); // commit sha → { tree, message, parent }
 for (const f of fs.readdirSync(dir)) {
   if (f.endsWith('.json')) store(`public/tags/${f}`, fs.readFileSync(`${dir}/${f}`));
 }
+snapshots.set(head, new Map(files));
 
 let control = { expired: !!process.env.TOKEN_EXPIRED, failPut: new Map() };
 const commits = []; // { message, date }, newest last
@@ -79,6 +82,9 @@ http.createServer(async (req, res) => {
     if (body.fakeCommits) for (let i = 0; i < body.fakeCommits.count; i++) commits.push({ message: body.fakeCommits.message, date: new Date().toISOString() });
     if (body.clearCommits) commits.length = 0;
     if ('failMove' in body) control.failMove = !!body.failMove;
+    // Simulates someone else saving just before the next branch update.
+    if ('raceNextRef' in body) control.raceNextRef = !!body.raceNextRef;
+    if (body.putAny) { store(body.putAny.path, Buffer.from(body.putAny.text)); newHead(); }
     return send(res, 200, { ok: true, files: [...files.keys()] });
   }
 
@@ -99,6 +105,13 @@ http.createServer(async (req, res) => {
     const [what, ...rest] = git[1].split('/');
     if (what === 'ref' && req.method === 'GET') return send(res, 200, { object: { sha: head } });
     if (what === 'commits' && req.method === 'GET') return send(res, 200, { sha: rest[0], tree: { sha: `tree-of-${rest[0]}` } });
+    if (what === 'blobs' && req.method === 'POST') {
+      if (body.encoding === 'base64' && !/^[A-Za-z0-9+/]*={0,2}$/.test(body.content || '')) return send(res, 422, { message: 'Invalid base64' });
+      const bytes = Buffer.from(body.content || '', body.encoding === 'base64' ? 'base64' : 'utf8');
+      const s2 = sha(bytes);
+      blobs.set(s2, bytes);
+      return send(res, 201, { sha: s2 });
+    }
     if (what === 'trees' && req.method === 'POST') {
       const id = crypto.randomBytes(20).toString('hex');
       trees.set(id, body.tree || []);
@@ -110,15 +123,18 @@ http.createServer(async (req, res) => {
       return send(res, 201, { sha: id });
     }
     if (what === 'refs' && req.method === 'PATCH') {
+      if (control.raceNextRef) { control.raceNextRef = false; newHead(); } // someone else saved
       const c = gitCommits.get(body.sha);
       if (!c || c.parent !== head) return send(res, 422, { message: 'Update is not a fast forward' });
       if (control.failMove) { control.failMove = false; return send(res, 500, { message: 'Simulated failure' }); }
       for (const e of trees.get(c.tree) || []) {
+        if ('content' in e) { store(e.path, Buffer.from(e.content, 'utf8')); continue; }
         if (e.sha === null) files.delete(e.path);
         else if (blobs.has(e.sha)) files.set(e.path, { bytes: blobs.get(e.sha), sha: e.sha });
         else return send(res, 422, { message: 'unknown blob' });
       }
       head = body.sha;
+      snapshots.set(head, new Map(files));
       commits.push({ message: c.message, date: new Date().toISOString() });
       return send(res, 200, { object: { sha: head } });
     }
@@ -136,11 +152,12 @@ http.createServer(async (req, res) => {
     const list = commits.filter((c) => c.date >= since).reverse().slice(0, 100).map((c) => ({ commit: { message: c.message } }));
     return send(res, 200, list);
   }
-  const m = req.url.match(/^\/repos\/[^/]+\/[^/]+\/contents\/(.+)$/);
+  const m = req.url.split('?')[0].match(/^\/repos\/[^/]+\/[^/]+\/contents\/(.+)$/);
   if (!m) return send(res, 404, { message: 'Not Found' });
   const path = m[1].split('/').map(decodeURIComponent).join('/');
   const name = path.split('/').pop();
-  const cur = files.get(path);
+  const ref = new URLSearchParams(req.url.split('?')[1] || '').get('ref');
+  const cur = (ref && snapshots.has(ref) ? snapshots.get(ref) : files).get(path);
   if (req.method === 'GET') {
     if (!cur) return send(res, 404, { message: 'Not Found' });
     if ((req.headers.accept || '').includes('raw')) {
@@ -159,7 +176,7 @@ http.createServer(async (req, res) => {
     if (!cur && body.sha) return send(res, 422, { message: 'no file' });
     store(path, Buffer.from(body.content, 'base64'));
     commits.push({ message: body.message || '', date: new Date().toISOString() });
-    head = crypto.randomBytes(20).toString('hex'); // every save moves the branch on
+    newHead(); // every save moves the branch on
     return send(res, cur ? 200 : 201, { content: { sha: files.get(path).sha } });
   }
   if (req.method === 'DELETE') {
@@ -167,7 +184,7 @@ http.createServer(async (req, res) => {
     if (body.sha !== cur.sha) return send(res, 409, { message: 'sha mismatch' });
     files.delete(path);
     commits.push({ message: body.message || '', date: new Date().toISOString() });
-    head = crypto.randomBytes(20).toString('hex');
+    newHead();
     return send(res, 200, {});
   }
   send(res, 405, {});

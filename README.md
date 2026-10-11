@@ -140,6 +140,7 @@ Settings are saved in `public/tags/_settings.json` in your repo. The underscore 
 | **Link** | A tape strip that opens a web address (must start with `https://` or `http://`). If you haven't added the address yet, it shows faded and can't be tapped. |
 | **Text** | A paper note. Line breaks are kept. Add a link inside text like this: `[the manual](https://example.com)`. Switch on **Anyone can edit** to let people who tap the sticker change it (see below). |
 | **File** | One of your uploaded **public** files (see Files below). Photos show on the page, videos and audio play there, and anything else (a PDF manual, say) opens from a tape strip. |
+| **File stack** | A list of public files, with photos as thumbnails: tap one to view it. Switch on **Anyone can upload** to let people who tap the sticker add files to it, like receipts under a service log (see below). |
 | **Video** | A YouTube video (youtube.com, youtu.be or Shorts links). It shows the thumbnail, and the player only loads when someone taps it, using YouTube's privacy-enhanced mode. |
 | **Menu** | A strip with a second strip peeking out behind it. It opens another page of the same tag, which has its own color and blocks. Choose **+ New page** to make one. |
 | **Heading** | A small strip that labels a section. Not clickable. |
@@ -160,13 +161,23 @@ The **Files** tab on the main menu keeps files with your labels, in your repo:
 - Each upload is a save to GitHub, so a new public file's link works about a minute later. Making a file private or deleting it stops it showing here, but anyone who already had its link may reach copies on older versions of the site for a while.
 - **Optional, saves deploys:** private files aren't part of the website, so uploading one doesn't need a new deploy. If your Cloudflare project has **Settings › Build › Build watch paths**, add `files/*` to the exclude list.
 
+## File stacks anyone can add to
+
+Add a **File stack** block and switch on **Anyone can upload**: the stack gets an **Add a file** button on the page, and whatever someone adds shows in the stack for everyone with the sticker.
+
+- Visitors can add the same kinds of files you can make public, up to 5 MB each. Web-page and script files are never accepted.
+- Each person can add 3 files an hour. Visitor uploads and note edits share the site's limit of 10 a day, and visitor uploads stop at 25 MB a day (GitHub keeps every file in the history, even after you delete it, so this keeps your repo from growing fast).
+- If you're editing the label when someone adds a file, **Overwrite** keeps their file in the stack.
+- Each upload is one commit ("Visitor upload to /address: file name"), adding the file and updating the label together.
+- Their files show up in your **Files** tab like your own. Delete any you don't want, or take them out of the stack in the editor.
+
 ## Notes anyone can edit
 
 Turn on **Anyone can edit** on a text block, and its note gets an **Edit** button on the page: anyone who taps the sticker can change it, no password. Handy for a service log, "last cleaned", or a whiteboard on a shared fridge.
 
 - Only notes you switch on can be edited. Titles, strips, links and files stay yours.
 - Visitor text is always plain text: links don't work there, so nobody can slip in a phishing link. Notes anyone can edit are up to 1,000 characters.
-- Each person can make 6 edits an hour, and the whole site 10 a day. Each edit is a save, and the free Cloudflare plan allows 500 deploys a month, so this keeps visitors to about 300 at most and leaves room for yours.
+- Each person can make 6 edits an hour, and the whole site 10 a day (shared with file stack uploads). Each edit is a save, and the free Cloudflare plan allows 500 deploys a month, so this keeps visitors to about 300 at most and leaves room for yours.
 - Every edit is a commit in your repo, titled "Visitor edit on /address", so you can see and undo anything on GitHub.
 - If you're editing the same label in the label maker when someone else changes the note, saving offers **Overwrite** or **Save as copy**.
 

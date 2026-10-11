@@ -598,6 +598,10 @@ label.tm-tape-btn:focus-within { outline: 2px solid var(--ink); outline-offset: 
 .tm-file-name { font-family: var(--mono); font-size-adjust: none; letter-spacing: normal; font-size: 14px; overflow-wrap: anywhere; }
 .tm-file-meta { font-size: 12px; color: #55524C; }
 .tm-file .tm-item-actions { flex-wrap: wrap; }
+.tm-stack-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.tm-stack-list li { display: flex; align-items: center; gap: 8px; }
+.tm-stack-name { flex: 1 1 auto; min-width: 0; font-family: var(--mono); font-size-adjust: none; letter-spacing: normal; font-size: 13px; overflow-wrap: anywhere; }
+.tm-stack-name em { color: #A0151B; font-style: normal; }
 .tm-upload-inline { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; position: relative; cursor: pointer; }
 .tm-upload-inline:focus-within { outline: 2px solid var(--ink); outline-offset: 2px; }
 

@@ -74,6 +74,24 @@ eq(formatBytes(1536 * 1024), '1.5 MB', 'format MB');
 ok(canBePublic('a.pdf') && canBePublic('a.jpg') && canBePublic('a.zip') && canBePublic('a.docx'), 'viewable and download types can be public');
 ok(!canBePublic('a.html') && !canBePublic('a.svg') && !canBePublic('a.rss') && !canBePublic('a.xsd') && !canBePublic('a.es') && !canBePublic('noext'), 'web-page-like and unknown types are private-only');
 
+// --- file stacks
+{
+  const tag = (b) => ({ pages: [{ slug: '', title: 'T', blocks: [b] }] });
+  const stack = { type: 'files', label: 'Receipts', files: ['abcdefghijklmnop/a.jpg', 'abcdefghijklmnop/b.pdf', 'abcdefghijklmnop/a.jpg'], uploads: true };
+  const v = validateTag(tag(stack));
+  ok(v.ok && v.tag.pages[0].blocks[0].files.length === 2 && v.tag.pages[0].blocks[0].uploads === true, 'file stack valid, duplicates dropped');
+  ok(!validateTag(tag({ type: 'files', files: ['../x'] })).ok, 'stack entries must be uploads');
+  ok(!validateTag(tag({ type: 'files', files: Array.from({ length: 51 }, (_, i) => `abcdefghijklmnop/f${i}.pdf`) })).ok, 'stack capped at 50');
+  const live = renderPageHtml(v.tag, v.tag.pages[0], { tagSlug: 'r1', visitorEdit: true });
+  ok(live.includes('data-kind="image"') && live.includes('<img src="/files/abcdefghijklmnop/a.jpg"') && live.includes('>PDF<'), 'stack shows a photo thumbnail and a PDF tile');
+  ok(live.includes('data-stack-upload') && live.includes('data-stack-tag="r1"'), 'live page gets Add a file when uploads are on');
+  ok(!renderPageHtml(v.tag, v.tag.pages[0], { tagSlug: 'r1' }).includes('data-stack-upload'), 'editor preview has no upload button');
+  const off = validateTag(tag({ ...stack, uploads: false })).tag;
+  ok(!renderPageHtml(off, off.pages[0], { tagSlug: 'r1', visitorEdit: true }).includes('data-stack-upload'), 'no upload button when uploads are off');
+  const gone = renderPageHtml(v.tag, v.tag.pages[0], { missingFiles: new Set(['abcdefghijklmnop/a.jpg']) });
+  ok(!gone.includes('a.jpg') && gone.includes('b.pdf'), 'deleted or private files drop out of the stack');
+}
+
 // --- notes anyone can edit
 {
   const tag = (b) => ({ pages: [{ slug: '', title: 'T', blocks: [b] }] });

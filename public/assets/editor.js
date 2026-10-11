@@ -18,10 +18,11 @@ const ICONS = {
   video: 'M3 6h18v12H3zM10 9.5v5l4.5-2.5z',
   menu: 'M4 6h16M4 12h16M4 18h10',
   heading: 'M6 5v14M18 5v14M6 12h12',
-  file: 'M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7'
+  file: 'M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7',
+  files: 'M8 4h12v12H8zM4 8v12h12'
 };
-const TYPE_NAMES = { link: 'Link', text: 'Text', video: 'Video', menu: 'Menu', heading: 'Heading', file: 'File' };
-const LABEL_HINTS = { link: 'Label, e.g. Manual', menu: 'Menu name', heading: 'Heading text', video: 'Video title', file: 'Label or caption, e.g. Manual' };
+const TYPE_NAMES = { link: 'Link', text: 'Text', video: 'Video', menu: 'Menu', heading: 'Heading', file: 'File', files: 'File stack' };
+const LABEL_HINTS = { link: 'Label, e.g. Manual', menu: 'Menu name', heading: 'Heading text', video: 'Video title', file: 'Label or caption, e.g. Manual', files: 'Caption, e.g. Receipts' };
 
 const svg = (path, size = 18, width = 2.2) =>
   `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
@@ -46,7 +47,7 @@ function blankState() {
 }
 
 function newBlock(type, target = '') {
-  return { id: newId('b'), type, label: '', url: '', text: '', color: '', target, file: '', editable: false };
+  return { id: newId('b'), type, label: '', url: '', text: '', color: '', target, file: '', editable: false, files: [], uploads: false };
 }
 
 function page() {
@@ -88,6 +89,10 @@ function toData() {
         const out = { type: b.type, label: b.label.trim() };
         if (b.type === 'link' || b.type === 'video') out.url = b.url.trim();
         if (b.type === 'file') out.file = b.file || '';
+        if (b.type === 'files') {
+          out.files = Array.isArray(b.files) ? [...b.files] : [];
+          if (b.uploads) out.uploads = true;
+        }
         if (b.type === 'menu') out.page = byId.has(b.target) ? byId.get(b.target) : '#missing';
         if ((b.type === 'link' || b.type === 'menu' || b.type === 'heading' || b.type === 'file') && b.color) out.color = b.color;
         return out;
@@ -107,6 +112,8 @@ function fromData(slug, tag, sha) {
     dirty: false,
     current: 'main',
     font: tag.font || '',
+    // Stack files as opened, so an Overwrite can keep files visitors added since.
+    openedStackFiles: tag.pages.flatMap((p) => (p.blocks || []).flatMap((b) => (b.type === 'files' && Array.isArray(b.files) ? b.files : []))),
     pages: tag.pages.map((p, i) => ({
       id: ids[i],
       title: p.title || '',
@@ -120,6 +127,8 @@ function fromData(slug, tag, sha) {
         text: b.text || '',
         file: b.file || '',
         editable: b.editable === true,
+        files: Array.isArray(b.files) ? [...b.files] : [],
+        uploads: b.uploads === true,
         color: normColor(b.color) || '',
         target: b.type === 'menu' ? (bySlug.get(b.page) || '') : ''
       }))
@@ -512,7 +521,7 @@ async function loadFiles(render = true) {
 function refreshFileBlocks() {
   const blocks = page().blocks;
   blocks.forEach((b, i) => {
-    if (b.type !== 'file') return;
+    if (b.type !== 'file' && b.type !== 'files') return;
     const card = cardFor(b);
     if (!card || card.contains(document.activeElement)) return;
     card.outerHTML = blockCard(b, i, blocks.length);
@@ -867,7 +876,8 @@ function renderLive() {
     ? (index > 0 ? backLinkHtml(state.tagSlug || 'tag', data.pages[0].title) : '') +
       renderPageHtml(data, pageData, {
         tagSlug: state.tagSlug || 'tag', compact: true, siteFont,
-        missingFiles: filesLoaded ? new Set(pageData.blocks.filter((b) => b.type === 'file' && b.file && !files.some((f) => !f.private && f.ref === b.file)).map((b) => b.file)) : undefined,
+        missingFiles: filesLoaded ? new Set(pageData.blocks.flatMap((b) => (b.type === 'file' ? [b.file] : b.type === 'files' ? b.files : []))
+          .filter((ref) => ref && !files.some((f) => !f.private && f.ref === ref))) : undefined,
         // Through the API: a file uploaded a moment ago isn't on the site yet.
         fileUrl: (ref) => `/api/file/${ref}?private=0`
       })
@@ -1115,6 +1125,26 @@ function blockCard(b, i, n) {
       ? '<p class="tm-error">That file was deleted or made private, so the page shows it as "coming soon".</p>'
       : '<p class="tm-hint">Only public files can go on a label. Images, video and audio show on the page; other files open from a strip.</p>';
   }
+  if (t === 'files') {
+    const name = (ref) => ref.split('/')[1] || ref;
+    const known = (ref) => files.some((f) => !f.private && f.ref === ref);
+    h += '<ul class="tm-stack-list">' + (b.files.length ? b.files.map((ref) =>
+      `<li><span class="tm-stack-name">${esc(name(ref))}${filesLoaded && !known(ref) ? ' <em>(not available)</em>' : ''}</span>` +
+      `<button type="button" class="tm-icon-btn tm-remove" data-act="stack-remove" data-ref="${esc(ref)}" aria-label="Take ${esc(name(ref))} out of the stack">${svg('M6 6l12 12M18 6L6 18')}</button></li>`
+    ).join('') : '<li class="tm-hint">No files in this stack yet.</li>') + '</ul>';
+    const addable = files.filter((f) => !f.private && !b.files.includes(f.ref));
+    const sel = `stack-${b.id}`;
+    h += `<div class="tm-menu-row"><label for="${esc(sel)}">Add</label><select id="${esc(sel)}" data-field="stack-add">`;
+    h += '<option value="" selected disabled>Choose a public file</option>';
+    h += addable.map((f) => `<option value="${esc(f.ref)}">${esc(f.name)} · ${esc(formatBytes(f.size))}</option>`).join('');
+    h += '</select></div>';
+    h += `<label class="tm-btn-outline tm-btn-sm tm-upload-inline">${svg('M12 16V4M6 10l6-6 6 6M4 20h16', 16, 2.2)}Upload a new file` +
+      `<input type="file" class="tm-visually-hidden" data-upload-for="${esc(b.id)}"></label>`;
+    h += '<p class="tm-hint" data-msg="upload" role="status"></p>';
+    h += `<label class="tm-switch-row tm-switch-inline"><span class="tm-switch-text"><span class="tm-switch-title">Anyone can upload</span>` +
+      `<span class="tm-hint">People who tap the sticker can add files to this stack, no login. Up to 5 MB each, 3 an hour per person.</span></span>` +
+      `<input type="checkbox" class="tm-switch" data-field="uploads"${b.uploads ? ' checked' : ''}></label>`;
+  }
   if (t === 'link' || t === 'menu' || t === 'heading' || t === 'file') {
     const cid = `col-${b.id}`;
     const value = b.color || normColor(pg.color) || DEFAULT_COLOR;
@@ -1173,13 +1203,18 @@ function blockFromEvent(e) {
 $('block-list').addEventListener('input', (e) => {
   const b = blockFromEvent(e);
   const field = e.target.getAttribute('data-field');
-  if (!b || !field || field === 'target') return;
+  if (!b || !field || field === 'target' || field === 'stack-add' || field === 'file') return; // handled on change
   if (field === 'color') {
     b.color = normColor(e.target.value);
     const card = cardFor(b);
     card.querySelector('.tm-color-box').style.backgroundColor = b.color;
     card.querySelector('.tm-color-text').textContent = b.color;
     card.querySelector('[data-act="reset-color"]').hidden = false;
+  } else if (field === 'uploads') {
+    b.uploads = e.target.checked;
+    edited();
+    renderLive();
+    return;
   } else if (field === 'editable') {
     b.editable = e.target.checked;
     if (b.editable && b.text.length > LIMITS.editableText) {
@@ -1201,6 +1236,13 @@ $('block-list').addEventListener('input', (e) => {
 
 $('block-list').addEventListener('change', async (e) => {
   const b = blockFromEvent(e);
+  if (b && e.target.getAttribute('data-field') === 'stack-add') {
+    if (e.target.value && !b.files.includes(e.target.value)) b.files.push(e.target.value);
+    edited();
+    renderBlocks();
+    renderLive();
+    return;
+  }
   if (b && e.target.getAttribute('data-field') === 'file') {
     b.file = e.target.value;
     edited();
@@ -1214,8 +1256,12 @@ $('block-list').addEventListener('change', async (e) => {
     const status = cardFor(b).querySelector('[data-msg="upload"]');
     const up = await uploadPicked(picked, 'public', status);
     if (!up) return;
-    b.file = up.ref;
-    if (!b.label) b.label = up.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').slice(0, LIMITS.videoTitle);
+    if (b.type === 'files') {
+      if (!b.files.includes(up.ref)) b.files.push(up.ref);
+    } else {
+      b.file = up.ref;
+      if (!b.label) b.label = up.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').slice(0, LIMITS.videoTitle);
+    }
     edited();
     renderBlocks();
     renderLive();
@@ -1263,13 +1309,16 @@ $('block-list').addEventListener('click', async (e) => {
   } else if (act === 'reset-color') {
     b.color = '';
     renderBlocks();
+  } else if (act === 'stack-remove') {
+    b.files = b.files.filter((ref) => ref !== btn.getAttribute('data-ref'));
+    renderBlocks();
   }
   edited();
   renderLive();
 });
 
 function renderAddRow() {
-  $('add-row').innerHTML = ['link', 'text', 'file', 'video', 'menu', 'heading'].map((t) =>
+  $('add-row').innerHTML = ['link', 'text', 'file', 'files', 'video', 'menu', 'heading'].map((t) =>
     `<button type="button" class="tm-add" data-add="${t}">${svg(ICONS[t], 20, 2)}${TYPE_NAMES[t]}</button>`
   ).join('');
 }
@@ -1378,15 +1427,59 @@ async function saveFlow(s, slug, tag) {
 
   // Changed somewhere else since it was opened (another phone, or Claude).
   const choice = await choose(
-    `/${slug} was changed somewhere else since you opened it: on another phone, by Claude, or by a visitor editing a note.\n\nOverwrite replaces that version with yours (including any visitor's note changes).\nSave as copy keeps both, saving yours at /${alt}.`,
+    `/${slug} was changed somewhere else since you opened it: on another phone, by Claude, or by a visitor editing a note or adding a file.\n\nOverwrite replaces that version with yours (visitors' note changes are lost; files they added to a stack are kept).\nSave as copy keeps both, saving yours at /${alt}.`,
     [
       { label: 'Save as copy', value: 'copy', style: 'outline' },
       { label: 'Overwrite', value: 'overwrite', style: 'danger' }
     ]
   );
   if (choice === 'copy') return saveAsFree(slug, tag);
-  if (choice === 'overwrite') return { res: await putTag(slug, { tag, overwrite: true }), saveAt: slug };
+  if (choice === 'overwrite') {
+    const kept = await keepVisitorFiles(slug, tag, s);
+    return { res: await putTag(slug, kept.sha ? { tag: kept.tag, sha: kept.sha } : { tag: kept.tag, overwrite: true }), saveAt: slug };
+  }
   return { cancelled: 'Not saved. Your changes are kept here.' };
+}
+
+// Before overwriting: files visitors added to a stack since this label was
+// opened go back into the matching stack (same page, same nth stack), so an
+// Overwrite never quietly drops them. Files you removed stay removed.
+// Returns { tag, sha }: the merged label, and the version it was merged with
+// (sent with the save, so an upload landing in between isn't overwritten).
+async function keepVisitorFiles(slug, tag, s) {
+  const { status, data } = await api(`/api/tag/${encodeURIComponent(slug)}`);
+  if (status !== 200 || !data.tag) return { tag, sha: '' };
+  const opened = new Set(s.openedStackFiles || []);
+  const merged = JSON.parse(JSON.stringify(tag));
+  for (const theirs of data.tag.pages) {
+    const mine = merged.pages.find((p) => p.slug === theirs.slug);
+    if (!mine) continue;
+    const myStacks = mine.blocks.filter((b) => b.type === 'files');
+    theirs.blocks.filter((b) => b.type === 'files').forEach((stack, n) => {
+      const target = myStacks[n];
+      if (!target) return;
+      for (const ref of stack.files || []) {
+        if (target.files.length >= LIMITS.stack) break;
+        if (!opened.has(ref) && !target.files.includes(ref)) target.files.push(ref);
+      }
+    });
+  }
+  return { tag: merged, sha: data.sha || '' };
+}
+
+// After a save, the editor's stacks match what was saved (an Overwrite may
+// have kept visitors' files), so the next save doesn't drop them.
+function syncStacks(s, saved) {
+  if (!saved || !Array.isArray(saved.pages)) return;
+  for (const sp of saved.pages) {
+    const mine = s.pages.find((p, i) => (i === 0 ? '' : p.slug) === sp.slug);
+    if (!mine) continue;
+    const myStacks = mine.blocks.filter((b) => b.type === 'files');
+    sp.blocks.filter((b) => b.type === 'files').forEach((stack, n) => {
+      if (myStacks[n]) myStacks[n].files = [...(stack.files || [])];
+    });
+  }
+  s.openedStackFiles = s.pages.flatMap((p) => p.blocks.flatMap((b) => (b.type === 'files' ? b.files : [])));
 }
 
 let saving = false;
@@ -1444,6 +1537,7 @@ $('save-btn').addEventListener('click', async () => {
     s.loadedSlug = saveAt;
     s.sha = res.data.sha || '';
     s.dirty = snapshot() !== sent;
+    syncStacks(s, res.data.tag);
     const movedTo = res.data.movedTo || '';
     labels = labels.filter((l) => l.slug !== saveAt).concat({ slug: saveAt }, movedTo ? [{ slug: movedTo }] : []);
     if (state !== s) return; // the editor moved on to another label meanwhile

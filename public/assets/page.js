@@ -139,3 +139,148 @@ document.addEventListener('click', function (e) {
   var note = btn.closest('.lt-editable');
   if (note) openEditor(note);
 });
+
+// File stacks: tap a photo, video or audio file to view it here; other files
+// (PDFs and so on) open in the phone's own viewer. If the owner switched on
+// "Anyone can upload", Add a file puts a new file in the stack.
+var MAX_UPLOAD = 5 * 1024 * 1024;
+
+// A file the owner since deleted or hid: drop its broken thumbnail.
+document.addEventListener('error', function (e) {
+  var img = e.target;
+  if (img && img.tagName === 'IMG' && img.closest && img.closest('.lt-file-card')) {
+    var li = img.closest('li');
+    if (li) li.parentNode.removeChild(li);
+  }
+}, true);
+
+function closeViewer() {
+  var v = document.querySelector('.lt-viewer');
+  if (v) v.parentNode.removeChild(v);
+  document.removeEventListener('keydown', viewerKeys);
+}
+function viewerKeys(e) { if (e.key === 'Escape') closeViewer(); }
+
+function openViewer(card) {
+  var kind = card.getAttribute('data-kind');
+  var href = card.getAttribute('href');
+  var name = card.getAttribute('data-name') || '';
+  var box = document.createElement('div');
+  box.className = 'lt-viewer';
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-modal', 'true');
+  box.setAttribute('aria-label', name);
+  var media;
+  if (kind === 'image') { media = document.createElement('img'); media.alt = name; }
+  else { media = document.createElement(kind); media.controls = true; if (kind === 'video') media.playsInline = true; }
+  media.src = href;
+  var bar = document.createElement('div');
+  bar.className = 'lt-viewer-bar';
+  var title = document.createElement('span');
+  title.textContent = name;
+  var open = document.createElement('a');
+  open.href = href;
+  open.textContent = 'Open';
+  var close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = 'Close';
+  close.addEventListener('click', closeViewer);
+  bar.appendChild(title);
+  bar.appendChild(open);
+  bar.appendChild(close);
+  box.appendChild(bar);
+  box.appendChild(media);
+  box.addEventListener('click', function (e) { if (e.target === box) closeViewer(); });
+  document.body.appendChild(box);
+  document.addEventListener('keydown', viewerKeys);
+  close.focus();
+}
+
+document.addEventListener('click', function (e) {
+  var card = e.target.closest && e.target.closest('.lt-file-card');
+  if (!card) return;
+  var kind = card.getAttribute('data-kind');
+  if (kind !== 'image' && kind !== 'video' && kind !== 'audio') return; // opens normally
+  e.preventDefault();
+  openViewer(card);
+});
+
+function stackMessage(stack, text) {
+  var msg = stack.querySelector('.lt-stack-msg');
+  if (!msg) {
+    msg = document.createElement('p');
+    msg.className = 'lt-edit-msg lt-stack-msg';
+    msg.setAttribute('role', 'status');
+    stack.appendChild(msg);
+  }
+  msg.textContent = text;
+}
+
+function addCard(stack, file, localUrl) {
+  var list = stack.querySelector('.lt-file-stack');
+  var empty = stack.querySelector('.lt-stack-empty');
+  if (empty) empty.parentNode.removeChild(empty);
+  var li = document.createElement('li');
+  var a = document.createElement('a');
+  a.className = 'lt-file-card';
+  a.href = file.kind === 'image' || file.kind === 'video' || file.kind === 'audio' ? localUrl : '/files/' + file.ref;
+  a.setAttribute('data-kind', file.kind);
+  a.setAttribute('data-name', file.name);
+  if (file.kind === 'image') {
+    var img = document.createElement('img');
+    img.src = localUrl;
+    img.alt = '';
+    a.appendChild(img);
+  } else {
+    var t = document.createElement('span');
+    t.className = 'lt-file-type';
+    var m = file.name.match(/\.([a-z0-9]+)$/i);
+    t.textContent = m ? m[1].toUpperCase() : 'FILE';
+    a.appendChild(t);
+  }
+  var label = document.createElement('span');
+  label.className = 'lt-file-label';
+  label.textContent = file.name;
+  a.appendChild(label);
+  li.appendChild(a);
+  list.appendChild(li);
+}
+
+document.addEventListener('change', function (e) {
+  var input = e.target;
+  if (!input.hasAttribute || !input.hasAttribute('data-stack-upload')) return;
+  var stack = input.closest('.lt-files');
+  var file = input.files && input.files[0];
+  input.value = '';
+  if (!stack || !file) return;
+  if (file.size > MAX_UPLOAD) { stackMessage(stack, 'Files can be up to 5 MB here. That one is ' + (file.size / 1048576).toFixed(1) + ' MB.'); return; }
+  input.disabled = true;
+  stackMessage(stack, 'Uploading ' + file.name + '…');
+  var reader = new FileReader();
+  reader.onerror = function () { input.disabled = false; stackMessage(stack, 'Couldn’t read that file. Try again.'); };
+  reader.onload = function () {
+    var base64 = String(reader.result).replace(/^data:[^,]*,/, '');
+    fetch('/api/visitor-upload', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain',
+        'X-Stack-Tag': stack.getAttribute('data-stack-tag'),
+        'X-Stack-Page': stack.getAttribute('data-stack-page'),
+        'X-Stack-Block': stack.getAttribute('data-stack-block'),
+        'X-File-Name': encodeURIComponent(file.name)
+      },
+      body: base64
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+    }).then(function (r) {
+      input.disabled = false;
+      if (!r.ok) { stackMessage(stack, (r.data && r.data.error) || 'Couldn’t upload. Try again.'); return; }
+      addCard(stack, r.data.file, URL.createObjectURL(file));
+      stackMessage(stack, 'Added ' + r.data.file.name + '. Everyone sees it in about a minute.');
+    }, function () {
+      input.disabled = false;
+      stackMessage(stack, 'No connection. Check your internet and try again.');
+    });
+  };
+  reader.readAsDataURL(file);
+});

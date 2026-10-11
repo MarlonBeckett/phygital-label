@@ -397,3 +397,53 @@ a.lt-strip:focus-visible, a.lt-menu:focus-visible, a.lt-stack:focus-visible, .lt
 .lt-edit-row { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
 .lt-edit-msg { margin: 0; font-size: 12px; color: #55524C; }
 .lt-edit-badge { margin-right: auto; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #6A665F; }
+
+/* ---- File stacks ---- */
+.lt-files {
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--pad-text);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-radius: 6px;
+  background-color: #FBFAF6;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 6px 14px rgba(0, 0, 0, 0.08);
+}
+.lt-files .lt-caption { padding: 0; font-size: var(--text); color: var(--ink); }
+.lt-file-stack { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.lt-file-card { display: flex; flex-direction: column; gap: 6px; color: var(--ink); text-decoration: none; min-width: 0; }
+.lt-file-card img, .lt-file-type {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  object-fit: cover;
+  background-color: #E9E7E1;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+.lt-file-type { display: flex; align-items: center; justify-content: center; font-size: 14px; letter-spacing: 0.08em; color: #3D3A35; }
+.lt-file-label { font-family: var(--mono); font-size-adjust: none; letter-spacing: normal; font-size: 11px; color: #3D3A35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lt-file-card:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.lt-stack-empty { margin: 0; font-size: 13px; color: #6A665F; }
+.lt-upload-btn { position: relative; display: inline-flex; align-items: center; overflow: hidden; }
+.lt-upload-btn:focus-within { outline: 2px solid var(--ink); outline-offset: 2px; }
+.lt-upload-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 0; }
+
+/* On-page viewer for photos, video and audio in a stack. */
+.lt-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(16, 16, 16, 0.92);
+}
+.lt-viewer img, .lt-viewer video { max-width: 100%; max-height: calc(100% - 60px); border-radius: 6px; }
+.lt-viewer audio { width: min(100%, 480px); }
+.lt-viewer-bar { width: min(100%, 720px); display: flex; align-items: center; gap: 12px; color: #F3F1EA; font-family: var(--mono); font-size-adjust: none; letter-spacing: normal; font-size: 13px; }
+.lt-viewer-bar span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lt-viewer-bar a, .lt-viewer-bar button { min-height: 40px; padding: 0 14px; display: inline-flex; align-items: center; border: 1.5px solid #F3F1EA; border-radius: 20px; background: transparent; color: #F3F1EA; font: inherit; text-decoration: none; cursor: pointer; }

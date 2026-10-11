@@ -338,6 +338,69 @@ await fetch(`${MOCK}/__control`, { method: 'POST', body: JSON.stringify({ clearC
 await api(`/api/tag/${ve}`, { method: 'DELETE', body: '{}' });
 fs.unlinkSync(`${root}public/tags/${ve}.json`);
 
+// ------------------------------------------------ visitor uploads (stacks) ---
+const st = `${id}-receipts`;
+const stackTag = (uploads) => ({ pages: [{ slug: '', title: 'Receipts', blocks: [
+  { type: 'files', label: 'Receipts', files: [], uploads },
+  { type: 'files', label: 'Closed', files: [] }] }] });
+await api(`/api/tag/${st}`, { method: 'PUT', body: JSON.stringify({ tag: stackTag(true), overwrite: true }) });
+fs.writeFileSync(`${root}public/tags/${st}.json`, JSON.stringify(stackTag(true))); // as if deployed
+await sleep(1500);
+await fetch(`${MOCK}/__control`, { method: 'POST', body: JSON.stringify({ clearCommits: true }) });
+let uip = 0;
+const vup = (name, bytes, headers = {}) => fetch(`${B}/api/visitor-upload`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'text/plain', Origin: B, 'CF-Connecting-IP': `192.0.2.${++uip % 250}`, 'X-Stack-Tag': st, 'X-Stack-Page': '', 'X-Stack-Block': '0', 'X-File-Name': encodeURIComponent(name), ...headers },
+  body: Buffer.from(bytes).toString('base64')
+}).then(async (x) => ({ status: x.status, data: await x.json() }));
+page = await (await fetch(`${B}/${st}`)).text();
+ok((page.match(/data-stack-upload/g) || []).length === 1, 'Add a file shows only on the stack that allows uploads');
+let vu = await vup('Oil receipt.jpg', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]));
+ok(vu.status === 200 && /^[a-z0-9]{16}\/Oil-receipt\.jpg$/.test(vu.data.file.ref), 'a visitor can add a file to an open stack (no login)');
+const after = (await api(`/api/tag/${st}`)).data.tag;
+ok(after.pages[0].blocks[0].files.includes(vu.data.file.ref), 'the label now lists the file');
+r = await fetch(`${B}/api/file/${vu.data.file.ref}?private=0`, { headers: { Cookie: cookie } });
+ok(r.status === 200 && Buffer.from(await r.arrayBuffer()).equals(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])), 'the uploaded file is stored intact');
+let msgs = await (await fetch(`${MOCK}/repos/x/y/commits?since=2000-01-01`)).json();
+ok(msgs.filter((c) => c.commit.message.startsWith('Visitor upload to /')).length === 1, 'file and label saved in one commit');
+ok((await vup('x.jpg', Buffer.from('x'), { 'X-Stack-Block': '1' })).status === 403, 'stacks without "Anyone can upload" refuse files');
+ok((await vup('page.html', Buffer.from('<script>'))).status === 400, 'web-page files refused');
+ok((await vup('x.jpg', Buffer.from('x'), { Origin: 'https://evil.example' })).status === 403, 'uploads from other sites blocked');
+ok((await vup('big.jpg', Buffer.alloc(5 * 1024 * 1024 + 3))).status === 413, 'visitor files over 5 MB refused');
+// Someone else saves in the middle of an upload: it rebuilds on their version.
+await fetch(`${MOCK}/__control`, { method: 'POST', body: JSON.stringify({ raceNextRef: true }) });
+vu = await vup('race.jpg', Buffer.from('x'));
+ok(vu.status === 200 && (await api(`/api/tag/${st}`)).data.tag.pages[0].blocks[0].files.includes(vu.data.file.ref), 'an upload racing another save still lands, once');
+r = await fetch(`${B}/api/visitor-upload`, { method: 'POST', headers: { 'Content-Type': 'text/plain', Origin: B, 'CF-Connecting-IP': '192.0.2.201', 'X-Stack-Tag': st, 'X-Stack-Page': '', 'X-Stack-Block': '0', 'X-File-Name': 'bad.jpg' }, body: 'ab$=' });
+ok(r.status === 400 && /damaged/.test((await r.json()).error), 'damaged uploads get a clear message');
+ok((await vup('x.jpg', Buffer.from('x'), { 'X-Stack-Tag': '../etc' })).status === 400, 'bad label address refused');
+const oneIp = { 'CF-Connecting-IP': '203.0.113.88' };
+const three = [];
+for (let n = 0; n < 4; n++) three.push((await vup(`r${n}.pdf`, Buffer.from('%PDF-1.4'), oneIp)).status);
+ok(three.slice(0, 3).every((x) => x === 200) && three[3] === 429, '3 uploads an hour per person', JSON.stringify(three));
+// Uploads and edits share the daily cap of 10 (5 uploads so far).
+await fetch(`${MOCK}/__control`, { method: 'POST', body: JSON.stringify({ fakeCommits: { count: 5, message: `Visitor edit on /${st}` } }) });
+ok((await vup('late.jpg', Buffer.from('x'))).status === 429, 'uploads count towards the daily cap');
+// And a daily byte budget (git keeps every file forever).
+await fetch(`${MOCK}/__control`, { method: 'POST', body: JSON.stringify({ clearCommits: true }) });
+await fetch(`${MOCK}/__control`, { method: 'POST', body: JSON.stringify({ fakeCommits: { count: 1, message: `Visitor upload to /${st}: big.pdf (${25 * 1024 * 1024} bytes)` } }) });
+ok((await vup('more.jpg', Buffer.from('x'))).status === 429, 'daily upload budget (25 MB) enforced');
+await fetch(`${MOCK}/__control`, { method: 'POST', body: JSON.stringify({ clearCommits: true }) });
+// The deployed copy says open, but the label was closed meanwhile: refused.
+await api(`/api/tag/${st}`, { method: 'PUT', body: JSON.stringify({ tag: stackTag(false), overwrite: true }) });
+ok((await vup('closed.jpg', Buffer.from('x'))).status === 403, 'a stack closed since the page was deployed refuses files');
+// A full stack refuses more.
+const full = stackTag(true);
+full.pages[0].blocks[0].files = Array.from({ length: 50 }, (_, n) => `abcdefghijklmnop/f${n}.pdf`);
+await api(`/api/tag/${st}`, { method: 'PUT', body: JSON.stringify({ tag: full, overwrite: true }) });
+ok((await vup('one-more.jpg', Buffer.from('x'))).status === 409, 'a full stack (50 files) refuses more');
+// Claude must pass a sha for labels visitors can change.
+ok((await call('update_label', { address: st, label: full })).isError, 'Claude needs the current sha for labels visitors can change');
+ok((await call('update_label', { address: st, label: full, sha: 'abc1234' })).isError, 'a made-up sha counts as no sha');
+for (const f of (await api('/api/files')).data.files.filter((x) => (x.usedBy || []).includes(st))) await api(`/api/file/${f.ref}?private=0`, { method: 'DELETE' });
+await api(`/api/tag/${st}`, { method: 'DELETE', body: '{}' });
+fs.unlinkSync(`${root}public/tags/${st}.json`);
+
 // ------------------------------------------------------------ settings ---
 j = await api('/api/settings?health=1');
 ok(j.status === 200 && j.data.health.repo === 'local/mock' && j.data.health.expires, 'settings + health');
