@@ -50,6 +50,11 @@ function newBlock(type, target = '') {
   return { id: newId('b'), type, label: '', url: '', text: '', color: '', target, file: '', editable: false, files: [], uploads: false, downloads: false };
 }
 
+// A File block becomes a file viewer people swipe through (saved as a
+// "files" block) once it has more than one file or either switch is on.
+// Otherwise it saves as a plain "file" block, shown as before.
+const isStack = (b) => b.type === 'file' && (b.uploads || b.downloads || b.files.length > 1);
+
 function page() {
   return state.pages.find((p) => p.id === state.current) || state.pages[0];
 }
@@ -86,16 +91,16 @@ function toData() {
       color: normColor(p.color) || DEFAULT_COLOR,
       blocks: p.blocks.map((b) => {
         if (b.type === 'text') return { type: 'text', text: b.text, ...(b.editable ? { editable: true } : {}) };
-        const out = { type: b.type, label: b.label.trim() };
+        const out = { type: isStack(b) ? 'files' : b.type, label: b.label.trim() };
         if (b.type === 'link' || b.type === 'video') out.url = b.url.trim();
-        if (b.type === 'file') out.file = b.file || '';
-        if (b.type === 'files') {
-          out.files = Array.isArray(b.files) ? [...b.files] : [];
+        if (out.type === 'file') out.file = b.files[0] || '';
+        if (out.type === 'files') {
+          out.files = [...b.files];
           if (b.uploads) out.uploads = true;
           if (b.downloads) out.downloads = true;
         }
         if (b.type === 'menu') out.page = byId.has(b.target) ? byId.get(b.target) : '#missing';
-        if ((b.type === 'link' || b.type === 'menu' || b.type === 'heading' || b.type === 'file') && b.color) out.color = b.color;
+        if ((b.type === 'link' || b.type === 'menu' || b.type === 'heading' || out.type === 'file') && b.color) out.color = b.color;
         return out;
       })
     }))
@@ -122,13 +127,13 @@ function fromData(slug, tag, sha) {
       color: normColor(p.color) || DEFAULT_COLOR,
       blocks: (p.blocks || []).map((b) => ({
         id: newId('b'),
-        type: b.type,
+        type: b.type === 'files' ? 'file' : b.type, // both are a File card here
         label: b.label || '',
         url: b.url || '',
         text: b.text || '',
         file: b.file || '',
         editable: b.editable === true,
-        files: Array.isArray(b.files) ? [...b.files] : [],
+        files: b.type === 'files' && Array.isArray(b.files) ? [...b.files] : b.type === 'file' && b.file ? [b.file] : [],
         uploads: b.uploads === true,
         downloads: b.downloads === true,
         color: normColor(b.color) || '',
@@ -1112,48 +1117,38 @@ function blockCard(b, i, n) {
     h += '<option value="__new">+ New page</option></select></div>';
   }
   if (t === 'file') {
-    const pub = files.filter((f) => !f.private);
-    const sel = `file-${b.id}`;
-    const known = pub.some((f) => f.ref === b.file);
-    h += `<div class="tm-menu-row"><label for="${esc(sel)}">File</label><select id="${esc(sel)}" data-field="file">`;
-    if (!b.file) h += '<option value="" selected disabled>Choose a public file</option>';
-    else if (!known) h += `<option value="${esc(b.file)}" selected>${esc(b.file.split('/')[1] || 'File')} (not available)</option>`;
-    h += pub.map((f) => `<option value="${esc(f.ref)}"${f.ref === b.file ? ' selected' : ''}>${esc(f.name)} · ${esc(formatBytes(f.size))}</option>`).join('');
-    h += '</select></div>';
-    h += `<label class="tm-btn-outline tm-btn-sm tm-upload-inline">${svg('M12 16V4M6 10l6-6 6 6M4 20h16', 16, 2.2)}Upload a new file` +
-      `<input type="file" class="tm-visually-hidden" data-upload-for="${esc(b.id)}"></label>`;
-    h += '<p class="tm-hint" data-msg="upload" role="status"></p>';
-    h += b.file && !known && files.length
-      ? '<p class="tm-error">That file was deleted or made private, so the page shows it as "coming soon".</p>'
-      : '<p class="tm-hint">Only public files can go on a label. Images, video and audio show on the page; other files open from a strip.</p>';
-  }
-  if (t === 'files') {
     const name = (ref) => ref.split('/')[1] || ref;
     const known = (ref) => files.some((f) => !f.private && f.ref === ref);
-    h += '<ul class="tm-stack-list">' + (b.files.length ? b.files.map((ref) =>
-      `<li><span class="tm-stack-name">${esc(name(ref))}${filesLoaded && !known(ref) ? ' <em>(not available)</em>' : ''}</span>` +
-      `<button type="button" class="tm-icon-btn tm-remove" data-act="stack-remove" data-ref="${esc(ref)}" aria-label="Take ${esc(name(ref))} out of the stack">${svg('M6 6l12 12M18 6L6 18')}</button></li>`
-    ).join('') : '<li class="tm-hint">No files in this stack yet.</li>') + '</ul>';
+    if (b.files.length) {
+      h += '<ul class="tm-stack-list">' + b.files.map((ref) =>
+        `<li><span class="tm-stack-name">${esc(name(ref))}${filesLoaded && !known(ref) ? ' <em>(not available)</em>' : ''}</span>` +
+        `<button type="button" class="tm-icon-btn tm-remove" data-act="stack-remove" data-ref="${esc(ref)}" aria-label="Take ${esc(name(ref))} off this block">${svg('M6 6l12 12M18 6L6 18')}</button></li>`
+      ).join('') + '</ul>';
+    }
     const addable = files.filter((f) => !f.private && !b.files.includes(f.ref));
-    const sel = `stack-${b.id}`;
-    h += `<div class="tm-menu-row"><label for="${esc(sel)}">Add</label><select id="${esc(sel)}" data-field="stack-add">`;
-    h += '<option value="" selected disabled>Choose a public file</option>';
+    const sel = `file-${b.id}`;
+    h += `<div class="tm-menu-row"><label for="${esc(sel)}">${b.files.length ? 'Add' : 'File'}</label><select id="${esc(sel)}" data-field="stack-add">`;
+    h += `<option value="" selected disabled>${b.files.length ? 'Add another public file' : 'Choose a public file'}</option>`;
     h += addable.map((f) => `<option value="${esc(f.ref)}">${esc(f.name)} · ${esc(formatBytes(f.size))}</option>`).join('');
     h += '</select></div>';
     h += `<label class="tm-btn-outline tm-btn-sm tm-upload-inline">${svg('M12 16V4M6 10l6-6 6 6M4 20h16', 16, 2.2)}Upload a new file` +
       `<input type="file" class="tm-visually-hidden" data-upload-for="${esc(b.id)}"></label>`;
     h += '<p class="tm-hint" data-msg="upload" role="status"></p>';
-    h += `<label class="tm-switch-row tm-switch-inline"><span class="tm-switch-text"><span class="tm-switch-title">Anyone can upload</span>` +
-      `<span class="tm-hint">People who tap the sticker can add files to this stack, no login. Up to 5 MB each, 3 an hour per person.</span></span>` +
-      `<input type="checkbox" class="tm-switch" data-field="uploads"${b.uploads ? ' checked' : ''}></label>`;
-    h += `<label class="tm-switch-row tm-switch-inline"><span class="tm-switch-text"><span class="tm-switch-title">Download button</span>` +
-      `<span class="tm-hint">Adds a Download button for the file in view. Without it, people can still view the files.</span></span>` +
+    h += filesLoaded && b.files.some((ref) => !known(ref))
+      ? '<p class="tm-error">A file marked "not available" was deleted or made private, so the page leaves it out.</p>'
+      : '<p class="tm-hint">Only public files can go on a label. With more than one file, people swipe through them.</p>';
+    h += `<label class="tm-switch-row tm-switch-inline"><span class="tm-switch-text"><span class="tm-switch-title">Anyone can download</span>` +
+      `<span class="tm-hint">Adds a Download button for the file on screen.</span></span>` +
       `<input type="checkbox" class="tm-switch" data-field="downloads"${b.downloads ? ' checked' : ''}></label>`;
+    h += `<label class="tm-switch-row tm-switch-inline"><span class="tm-switch-text"><span class="tm-switch-title">Anyone can upload</span>` +
+      `<span class="tm-hint">People who tap the sticker can add files here, no login. Up to 5 MB each, 3 an hour per person.</span></span>` +
+      `<input type="checkbox" class="tm-switch" data-field="uploads"${b.uploads ? ' checked' : ''}></label>`;
   }
   if (t === 'link' || t === 'menu' || t === 'heading' || t === 'file') {
     const cid = `col-${b.id}`;
     const value = b.color || normColor(pg.color) || DEFAULT_COLOR;
-    h += `<div class="tm-color-row"><label for="${esc(cid)}">Color</label>`;
+    // A single file that opens from a strip uses the colour; the viewer doesn't.
+    h += `<div class="tm-color-row"${isStack(b) ? ' hidden' : ''}><label for="${esc(cid)}">Color</label>`;
     h += `<span class="tm-color-box" style="background-color:${value}"><input id="${esc(cid)}" type="color" data-field="color" value="${value.toLowerCase()}"></span>`;
     h += `<span class="tm-color-text">${b.color ? b.color : 'Page color'}</span>`;
     h += `<button type="button" class="tm-reset" data-act="reset-color"${b.color ? '' : ' hidden'}>Use page color</button></div>`;
@@ -1208,7 +1203,7 @@ function blockFromEvent(e) {
 $('block-list').addEventListener('input', (e) => {
   const b = blockFromEvent(e);
   const field = e.target.getAttribute('data-field');
-  if (!b || !field || field === 'target' || field === 'stack-add' || field === 'file') return; // handled on change
+  if (!b || !field || field === 'target' || field === 'stack-add') return; // handled on change
   if (field === 'color') {
     b.color = normColor(e.target.value);
     const card = cardFor(b);
@@ -1217,6 +1212,8 @@ $('block-list').addEventListener('input', (e) => {
     card.querySelector('[data-act="reset-color"]').hidden = false;
   } else if (field === 'uploads' || field === 'downloads') {
     b[field] = e.target.checked;
+    const row = cardFor(b).querySelector('.tm-color-row');
+    if (row) row.hidden = isStack(b);
     edited();
     renderLive();
     return;
@@ -1242,14 +1239,7 @@ $('block-list').addEventListener('input', (e) => {
 $('block-list').addEventListener('change', async (e) => {
   const b = blockFromEvent(e);
   if (b && e.target.getAttribute('data-field') === 'stack-add') {
-    if (e.target.value && !b.files.includes(e.target.value)) b.files.push(e.target.value);
-    edited();
-    renderBlocks();
-    renderLive();
-    return;
-  }
-  if (b && e.target.getAttribute('data-field') === 'file') {
-    b.file = e.target.value;
+    if (e.target.value && !b.files.includes(e.target.value) && b.files.length < LIMITS.stack) b.files.push(e.target.value);
     edited();
     renderBlocks();
     renderLive();
@@ -1261,12 +1251,8 @@ $('block-list').addEventListener('change', async (e) => {
     const status = cardFor(b).querySelector('[data-msg="upload"]');
     const up = await uploadPicked(picked, 'public', status);
     if (!up) return;
-    if (b.type === 'files') {
-      if (!b.files.includes(up.ref)) b.files.push(up.ref);
-    } else {
-      b.file = up.ref;
-      if (!b.label) b.label = up.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').slice(0, LIMITS.videoTitle);
-    }
+    if (!b.files.length && !b.label) b.label = up.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').slice(0, LIMITS.videoTitle);
+    if (!b.files.includes(up.ref)) b.files.push(up.ref);
     edited();
     renderBlocks();
     renderLive();
@@ -1323,7 +1309,7 @@ $('block-list').addEventListener('click', async (e) => {
 });
 
 function renderAddRow() {
-  $('add-row').innerHTML = ['link', 'text', 'file', 'files', 'video', 'menu', 'heading'].map((t) =>
+  $('add-row').innerHTML = ['link', 'text', 'file', 'video', 'menu', 'heading'].map((t) =>
     `<button type="button" class="tm-add" data-add="${t}">${svg(ICONS[t], 20, 2)}${TYPE_NAMES[t]}</button>`
   ).join('');
 }
@@ -1479,12 +1465,12 @@ function syncStacks(s, saved) {
   for (const sp of saved.pages) {
     const mine = s.pages.find((p, i) => (i === 0 ? '' : p.slug) === sp.slug);
     if (!mine) continue;
-    const myStacks = mine.blocks.filter((b) => b.type === 'files');
+    const myStacks = mine.blocks.filter(isStack);
     sp.blocks.filter((b) => b.type === 'files').forEach((stack, n) => {
       if (myStacks[n]) myStacks[n].files = [...(stack.files || [])];
     });
   }
-  s.openedStackFiles = s.pages.flatMap((p) => p.blocks.flatMap((b) => (b.type === 'files' ? b.files : [])));
+  s.openedStackFiles = s.pages.flatMap((p) => p.blocks.flatMap((b) => (isStack(b) ? b.files : [])));
 }
 
 let saving = false;

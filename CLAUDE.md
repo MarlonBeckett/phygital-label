@@ -56,6 +56,8 @@ owner does not code: explain steps in plain language.
 - `public/assets/page.js` – the public pages' script (YouTube, editable notes,
   file stack viewer and visitor uploads). `public/assets/stack.js` – swiping
   through a file stack (‹ ›, count, Download); also loaded by the editor preview.
+  In the editor, `file` and `files` blocks are one File card: it saves as
+  `files` (the swipeable viewer) once it has 2+ files or a switch on.
 
 ## Text style
 A tag's `font` is `"label"`, `"regular"`, or absent (= the site default from
@@ -82,6 +84,7 @@ that repo, so point GITHUB_REPO at a test repo while experimenting.
 No dependencies, just Node:
 
     node dev/test-unit.mjs                 # pure logic, no server needed
+    node dev/test-editor.mjs               # the editor's save/load logic
     node dev/mock-github.mjs public/tags   # GitHub stand-in on :8790
     npx wrangler pages dev public --port 8788
     node dev/test-api.mjs                  # sign-in, OAuth, MCP, API, settings

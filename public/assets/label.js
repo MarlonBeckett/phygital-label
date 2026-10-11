@@ -535,7 +535,7 @@ export function validateTag(input) {
         if (editable) out.editable = true;
         return out;
       }
-      const max = type === 'video' || type === 'file' ? LIMITS.videoTitle : LIMITS.label;
+      const max = type === 'video' || type === 'file' || type === 'files' ? LIMITS.videoTitle : LIMITS.label;
       if (label.length > max) fail(`${where}: the label is longer than ${max} characters.`);
       out.label = label;
       if (type === 'link') {
