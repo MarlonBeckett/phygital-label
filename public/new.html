@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="theme-color" content="#EFEEEA">
+<title>Tag maker</title>
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/label.css">
+<link rel="stylesheet" href="/assets/editor.css">
+<script type="module" src="/assets/editor.js"></script>
+</head>
+<body class="tm">
+
+<p id="loading" class="tm-loading">Loading…</p>
+
+<!-- Unlock -->
+<main id="screen-login" class="tm-login" hidden>
+  <h1 class="tm-tape tm-tape-xl" aria-label="Tag maker" data-emboss="Tag maker"></h1>
+  <form id="login-form" class="tm-card tm-login-card" novalidate>
+    <label for="pw" class="tm-label">Password</label>
+    <input id="pw" name="password" type="password" autocomplete="current-password" required class="tm-input tm-mono" placeholder="••••••••••••••••">
+    <p id="login-error" class="tm-error" role="alert" hidden></p>
+    <button id="login-btn" type="submit" class="tm-btn tm-btn-dark">Unlock</button>
+    <p class="tm-hint">This phone stays unlocked for 30 days.</p>
+  </form>
+</main>
+
+<!-- Editor -->
+<main id="screen-editor" class="tm-editor" hidden>
+  <header class="tm-header">
+    <div class="tm-tape tm-tape-sm" role="img" aria-label="Tag maker" data-emboss="Tag maker"></div>
+    <button id="open-btn" type="button" class="tm-btn-outline">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h6l2 2h10v10H3z"/></svg>
+      Open tag
+    </button>
+  </header>
+
+  <p id="editing-note" class="tm-note-line" hidden></p>
+
+  <section aria-label="Pages" class="tm-section">
+    <div class="tm-row-between">
+      <h2 class="tm-label">Pages in this tag</h2>
+      <span id="page-count" class="tm-count"></span>
+    </div>
+    <div id="page-chips" class="tm-chips"></div>
+  </section>
+
+  <section aria-label="Preview" class="tm-section">
+    <p class="tm-kicker">Live preview · <span id="preview-path"></span></p>
+    <div id="preview" class="tm-preview"></div>
+  </section>
+
+  <div class="tm-field">
+    <label for="pname" class="tm-label">Page title</label>
+    <input id="pname" type="text" maxlength="40" class="tm-input" autocomplete="off">
+  </div>
+
+  <div class="tm-field">
+    <label for="addr" id="addr-label" class="tm-label">Tag address</label>
+    <div id="addr-box" class="tm-addr">
+      <span id="addr-prefix" class="tm-addr-prefix"></span>
+      <input id="addr" type="text" maxlength="40" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false">
+    </div>
+    <p id="addr-hint" class="tm-hint">Lowercase letters, numbers and dashes.</p>
+    <p id="addr-error" class="tm-error" role="alert" hidden></p>
+  </div>
+
+  <fieldset class="tm-fieldset">
+    <legend class="tm-label">Page tape color</legend>
+    <div id="swatches" class="tm-swatches"></div>
+    <p class="tm-color-line"><span id="color-dot" aria-hidden="true"></span><span id="color-text"></span> · letters switch to dark on light tape</p>
+  </fieldset>
+
+  <section aria-label="Blocks" class="tm-section tm-blocks-section">
+    <div class="tm-row-between">
+      <h2 class="tm-label">Blocks on this page</h2>
+      <span id="block-count" class="tm-count"></span>
+    </div>
+    <div id="block-list" class="tm-block-list"></div>
+    <p class="tm-label tm-add-title">Add a block</p>
+    <div id="add-row" class="tm-add-row"></div>
+  </section>
+
+  <button id="delete-page" type="button" class="tm-btn-danger" hidden>Delete this page</button>
+
+  <div id="save-errors" class="tm-save-errors" role="alert" hidden></div>
+  <button id="save-btn" type="button" class="tm-btn tm-btn-dark tm-btn-save">Save tag</button>
+  <button id="logout-btn" type="button" class="tm-btn-link">Lock the tag maker on this phone</button>
+</main>
+
+<!-- Saved -->
+<main id="screen-saved" class="tm-saved" hidden>
+  <div class="tm-center">
+    <h1 class="tm-tape tm-tape-xl tm-tape-green" aria-label="Saved" data-emboss="Saved"></h1>
+  </div>
+
+  <section aria-label="Tag address" class="tm-card tm-stack">
+    <div class="tm-row-between">
+      <h2 class="tm-label">Your tag's address</h2>
+      <span id="copied-pill" class="tm-pill" hidden><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg>Copied</span>
+      <button id="copy-btn" type="button" class="tm-pill tm-pill-btn" hidden>Copy</button>
+    </div>
+    <p id="saved-url" class="tm-url"></p>
+    <p class="tm-hint tm-hint-lg">Goes live in about a minute while the site updates.</p>
+  </section>
+
+  <section id="nfc-android" aria-label="Write to tag" class="tm-card tm-stack" hidden>
+    <h2 class="tm-h2">Write it to the tag</h2>
+    <button id="nfc-btn" type="button" class="tm-btn tm-btn-dark tm-btn-nfc">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8.5a6 6 0 0 1 0 7M9.5 6a10 10 0 0 1 0 12M13 3.5a14 14 0 0 1 0 17"/></svg>
+      Write to tag
+    </button>
+    <p id="nfc-status" class="tm-hint tm-hint-lg" role="status">Tap the button, then hold the tag flat against the back of your phone until it buzzes.</p>
+  </section>
+
+  <section id="nfc-tools" aria-label="Write with NFC Tools" class="tm-card tm-stack" hidden>
+    <h2 class="tm-h2">Write it with NFC Tools</h2>
+    <ol class="tm-steps">
+      <li><span>1</span><span>Open NFC Tools and tap <strong>Write</strong>.</span></li>
+      <li><span>2</span><span>Tap <strong>Add a record</strong>, then choose <strong>URL</strong>.</span></li>
+      <li><span>3</span><span>Paste the address and tap <strong>OK</strong>.</span></li>
+      <li><span>4</span><span>Tap <strong>Write</strong>.</span></li>
+      <li><span>5</span><span id="hold-step">Hold the tag near the top of your phone until it confirms.</span></li>
+    </ol>
+  </section>
+
+  <section aria-label="Lock the tag" class="tm-tip">
+    <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+    <p><strong>Lock the tag once it works.</strong> In NFC Tools, go to Other › Lock tag so nobody can overwrite it. Locking can't be undone. You can still change the links here anytime.</p>
+  </section>
+
+  <div class="tm-stack-sm">
+    <button id="edit-again" type="button" class="tm-btn tm-btn-outline-lg">Edit this tag</button>
+    <button id="make-another" type="button" class="tm-btn tm-btn-plain">Make another tag</button>
+  </div>
+</main>
+
+<!-- Open an existing tag -->
+<dialog id="open-dialog" class="tm-dialog" aria-labelledby="open-title">
+  <form id="open-form" method="dialog" class="tm-stack" novalidate>
+    <h2 id="open-title" class="tm-h2">Open a tag</h2>
+    <div class="tm-field">
+      <label for="open-slug" class="tm-label">Tag address</label>
+      <div class="tm-addr">
+        <span id="open-prefix" class="tm-addr-prefix"></span>
+        <input id="open-slug" type="text" maxlength="40" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+    <p id="open-error" class="tm-error" role="alert" hidden></p>
+    <button id="open-go" type="submit" class="tm-btn tm-btn-dark">Open</button>
+    <button id="new-tag" type="button" class="tm-btn tm-btn-outline-lg">Start a new tag</button>
+    <button id="open-cancel" type="button" class="tm-btn tm-btn-plain">Cancel</button>
+  </form>
+</dialog>
+
+</body>
+</html>

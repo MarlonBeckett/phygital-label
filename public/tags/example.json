@@ -1,0 +1,31 @@
+{
+  "v": 1,
+  "pages": [
+    {
+      "slug": "",
+      "title": "Example camera",
+      "color": "#161616",
+      "blocks": [
+        { "type": "text", "text": "This is a sample tag with made-up details. Write anything here: specs, care tips, a story. Links work inside text too, like this [example link](https://example.com)." },
+        { "type": "link", "label": "Manual", "url": "https://example.com/manual" },
+        { "type": "link", "label": "Firmware", "url": "https://example.com/firmware" },
+        { "type": "heading", "label": "Watch" },
+        { "type": "video", "label": "Sample video", "url": "https://www.youtube.com/watch?v=aqz-KE-bpKQ" },
+        { "type": "menu", "label": "Settings guide", "page": "settings" },
+        { "type": "link", "label": "Contact owner", "url": "https://example.com/contact", "color": "#AD161C" }
+      ]
+    },
+    {
+      "slug": "settings",
+      "title": "Settings guide",
+      "color": "#1B4A9E",
+      "blocks": [
+        { "type": "text", "text": "Each menu is its own page with its own colour." },
+        { "type": "link", "label": "Video settings", "url": "https://example.com/video" },
+        { "type": "link", "label": "Low light", "url": "https://example.com/low-light" },
+        { "type": "heading", "label": "More", "color": "#E9B819" },
+        { "type": "link", "label": "Timelapse", "url": "https://example.com/timelapse" }
+      ]
+    }
+  ]
+}
