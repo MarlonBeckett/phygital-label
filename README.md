@@ -12,6 +12,7 @@ Little web pages for the things you own. Hide an NFC sticker under an embossed l
 yoursite.pages.dev/camera            ← a tag's main page
 yoursite.pages.dev/camera/settings   ← a sub-page (a "menu" strip opens it)
 yoursite.pages.dev/new               ← the phygital label maker (password protected)
+yoursite.pages.dev                   ← opens the label maker too
 yoursite.pages.dev/mcp               ← the Claude connector address
 ```
 
@@ -36,7 +37,7 @@ Remember the name shown at the top of your new repo, written like `your-name/my-
 
 1. Log in at [dash.cloudflare.com](https://dash.cloudflare.com).
 2. In the left menu, open **Compute (Workers & Pages)** (it may just say **Workers & Pages**), then click **Create**.
-3. Choose the **Pages** option, then **Import an existing Git repository** (or **Connect to Git**).
+3. **Don't** pick the big **Continue with GitHub** button: that makes a *Worker*, which can't run this site (you'd later see "Variables cannot be added to a Worker that only has static assets"). Instead, at the bottom of that screen, click the small **Continue to Pages** link ("Need to use the legacy Pages workflow?"). Then choose **Import an existing Git repository** (or **Connect to Git**).
 4. Connect your GitHub account when asked. When GitHub asks which repositories Cloudflare may see, you can pick **Only select repositories** and choose `my-tags`.
 5. Select `my-tags` and click **Begin setup**.
 6. Fill in the settings:
@@ -45,7 +46,7 @@ Remember the name shown at the top of your new repo, written like `your-name/my-
    - **Framework preset:** `None`
    - **Build command:** leave **empty**
    - **Build output directory:** `public`
-7. Click **Save and Deploy**. After a minute your site is live at `https://project-name.pages.dev`.
+7. Click **Save and Deploy**. After a minute your site is live at `https://project-name.pages.dev`. If the address ends in `.workers.dev` instead, you made a Worker by mistake: delete it and start this step again with **Continue to Pages**.
 
 ### 3. Create the GitHub key the phygital label maker uses to save
 
