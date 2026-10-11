@@ -59,6 +59,17 @@ chars), GITHUB_TOKEN and GITHUB_REPO. Saving with a real token commits to
 that repo, so point GITHUB_REPO at a test repo while experimenting.
 `GITHUB_API` can point the server at a local stand-in for the GitHub API.
 
+## Tests
+No dependencies, just Node:
+
+    node dev/test-unit.mjs                 # pure logic, no server needed
+    node dev/mock-github.mjs public/tags   # GitHub stand-in on :8790
+    npx wrangler pages dev public --port 8788
+    node dev/test-api.mjs                  # sign-in, OAuth, MCP, API, settings
+
+For test-api, `.dev.vars` needs GITHUB_TOKEN=local-mock, GITHUB_REPO=local/mock
+and GITHUB_API=http://localhost:8790. Add a test for every bug fixed.
+
 ## Design reference
 Approved mockups are 390px phone screens: warm grey board #E4E2DC with dot
 texture, preset tapes black #161616, red #AD161C, blue #1B4A9E, green

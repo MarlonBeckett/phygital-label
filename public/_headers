@@ -1,3 +1,5 @@
+# Keep the Content-Security-Policy in sync with CSP in lib/http.js (used by
+# Functions, which this file doesn't cover).
 /*
   X-Robots-Tag: noindex, nofollow, noarchive, nosnippet
   X-Content-Type-Options: nosniff

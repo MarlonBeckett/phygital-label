@@ -189,6 +189,8 @@ When you save, the server checks everything again, then commits `public/tags/<ad
 - Only `http`/`https` links and YouTube videos are accepted.
 - Claude connects with OAuth 2.1 (PKCE required). Nothing is stored: client ids, codes and tokens are signed with a key made from `ADMIN_PASSWORD` and a counter in the settings file, which **Sign out everywhere** bumps (login cookies use the same counter). Access tokens last an hour and refresh tokens 90 days. The Allow page shows which site will receive access, and needs your password unless that phone is already unlocked.
 - Everything Claude sends goes through the same checks as the label maker.
+- Logins only work on the address they were made on, and Claude's sign-in page always asks for the password.
+- **If your password ever leaks:** change `ADMIN_PASSWORD` in Cloudflare and redeploy, then make a new GitHub token and **delete the old one on GitHub**. Cloudflare keeps every past deployment running at its own address (like `abc123.project-name.pages.dev`) with the old settings, so deleting the old token is what cuts those off.
 
 **Editing a tag file by hand** works too: open `public/tags/<address>.json` on GitHub and click the pencil. The format:
 

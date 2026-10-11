@@ -2,7 +2,7 @@
 import { json } from '../../lib/http.js';
 import {
   passwordProblem, safeEqual, makeSessionCookie, sameOrigin,
-  lockedFor, recordFailure, clearFailures, failureDelay
+  startAttempt, clearFailures, failureDelay
 } from '../../lib/auth.js';
 
 export async function onRequestPost({ request, env }) {
@@ -10,7 +10,7 @@ export async function onRequestPost({ request, env }) {
   if (problem) return json({ error: problem, setup: true }, 500);
   if (!sameOrigin(request)) return json({ error: 'Request blocked.' }, 403);
 
-  const wait = lockedFor(request);
+  const wait = startAttempt(request);
   if (wait > 0) {
     const minutes = Math.ceil(wait / 60000);
     return json({ error: `Too many wrong tries. Wait ${minutes} minute${minutes === 1 ? '' : 's'}, then try again.` }, 429);
@@ -23,11 +23,10 @@ export async function onRequestPost({ request, env }) {
   } catch (e) { /* treated as a wrong password */ }
 
   if (!(await safeEqual(password, env.ADMIN_PASSWORD))) {
-    recordFailure(request);
     await failureDelay();
     return json({ error: 'Wrong password. Wait a few seconds, then try again.' }, 401);
   }
 
   clearFailures(request);
-  return json({ ok: true }, 200, { 'Set-Cookie': await makeSessionCookie(env) });
+  return json({ ok: true }, 200, { 'Set-Cookie': await makeSessionCookie(env, request) });
 }

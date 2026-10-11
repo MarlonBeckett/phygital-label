@@ -1,21 +1,12 @@
 // GET /api/settings[?health=1]  →  the saved site settings (and, with health, a GitHub check)
 // PUT /api/settings  { font }    →  changes the default text style
 import { json } from '../../lib/http.js';
-import { requireSession } from '../../lib/auth.js';
-import { githubProblem, tokenStatus } from '../../lib/github.js';
-import { listLabels, errorResponse } from '../../lib/labels.js';
+import { tokenStatus } from '../../lib/github.js';
+import { listLabels, errorResponse, ownerGuard } from '../../lib/labels.js';
 import { readSettingsFile, writeSettingsFile } from '../../lib/settings.js';
 
-async function guard(request, env) {
-  const denied = await requireSession(request, env);
-  if (denied) return denied;
-  const setup = githubProblem(env);
-  if (setup) return json({ error: setup, setup: true }, 500);
-  return null;
-}
-
 export async function onRequestGet({ request, env }) {
-  const stop = await guard(request, env);
+  const stop = await ownerGuard(request, env);
   if (stop) return stop;
   try {
     const { settings } = await readSettingsFile(env);
@@ -31,10 +22,10 @@ export async function onRequestGet({ request, env }) {
 }
 
 export async function onRequestPut({ request, env }) {
-  const stop = await guard(request, env);
+  const stop = await ownerGuard(request, env);
   if (stop) return stop;
   let body = {};
-  try { body = await request.json(); } catch (e) { /* checked below */ }
+  try { body = (await request.json()) || {}; } catch (e) { /* checked below */ }
   if (body.font !== 'label' && body.font !== 'regular') return json({ error: 'Pick Label or Regular.' }, 400);
   try {
     const { settings, sha } = await readSettingsFile(env);

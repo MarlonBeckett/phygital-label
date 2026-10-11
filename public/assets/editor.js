@@ -75,7 +75,8 @@ function toData() {
   const byId = new Map(state.pages.map((p, i) => [p.id, i === 0 ? '' : p.slug]));
   return {
     v: 1,
-    ...(state.font === 'label' || state.font === 'regular' ? { font: state.font } : {}),
+    // A choice equal to the site default is saved as "follow the default".
+    ...((state.font === 'label' || state.font === 'regular') && state.font !== siteFont ? { font: state.font } : {}),
     pages: state.pages.map((p, i) => ({
       slug: i === 0 ? '' : p.slug,
       title: p.title.trim(),
@@ -148,9 +149,13 @@ function loadDraft() {
     return false;
   }
 }
-function changed() {
+// Marks the label as edited (so leaving and coming back keeps the draft).
+function edited() {
   state.dirty = true;
   saveDraft();
+}
+function changed() {
+  edited();
   renderLive();
 }
 
@@ -178,7 +183,11 @@ async function api(path, options = {}) {
 // alert() are silently blocked in some in-app browsers, which made buttons
 // look dead.) Resolves with the tapped button's value, or null for Cancel.
 // Button styles: 'dark' (default), 'danger', 'outline'.
+let cancelOpenDialog = null;
+
 function choose(message, buttons, { cancel = 'Cancel' } = {}) {
+  // A new question cancels one that's still open, so answers can't cross.
+  if (cancelOpenDialog) cancelOpenDialog();
   const d = $('ask-dialog');
   const box = $('ask-buttons');
   const list = cancel ? [...buttons, { label: cancel, value: null, style: 'plain' }] : buttons;
@@ -193,9 +202,11 @@ function choose(message, buttons, { cancel = 'Cancel' } = {}) {
     const finish = (value) => {
       box.removeEventListener('click', onClick);
       d.removeEventListener('cancel', onEscape);
+      cancelOpenDialog = null;
       if (d.open) d.close();
       resolve(value);
     };
+    cancelOpenDialog = () => finish(null);
     const onClick = (e) => {
       const b = e.target.closest('[data-i]');
       if (b) finish(list[Number(b.getAttribute('data-i'))].value);
@@ -280,6 +291,7 @@ const unsaved = () => state.dirty && hasWork();
 let labels = [];
 
 function showHome() {
+  openSeq++; // likewise when going back to the menu
   show('screen-home');
   showTab('labels');
   $('mcp-url').textContent = `${location.origin}/mcp`;
@@ -427,13 +439,23 @@ function showTab(name) {
 
 // ------------------------------------------------------------- settings ---
 
+// True while a text style change is being saved, so nothing else (a slow
+// health check, a second tap) can flip the switch under it.
+let savingSiteFont = false;
+let fontSeq = 0; // bumped by each change, so older replies can be ignored
+
 $('site-font-switch').addEventListener('change', async (e) => {
   const font = e.target.checked ? 'regular' : 'label';
-  if (font === siteFont) return;
+  if (font === siteFont || savingSiteFont) return;
+  fontSeq++;
   const before = siteFont;
   applySiteFont(font);
+  savingSiteFont = true;
+  e.target.disabled = true;
   $('site-font-status').textContent = 'Saving…';
   const { status, data } = await api('/api/settings', { method: 'PUT', body: JSON.stringify({ font }) });
+  savingSiteFont = false;
+  e.target.disabled = false;
   if (status === 200) {
     $('site-font-status').textContent = 'Saved. Your labels switch over in about a minute, while the site updates.';
     return;
@@ -449,6 +471,7 @@ function healthRow(cls, text) {
 
 function expiryRow(iso) {
   if (!iso) return healthRow('tm-ok', 'The GitHub token never expires.');
+  if (iso === 'unknown') return healthRow('tm-warn', 'Couldn\'t read when the GitHub token expires. Check it on GitHub (Settings › Developer settings › Personal access tokens).');
   const when = new Date(iso);
   const days = Math.floor((when - Date.now()) / 86400000);
   const date = when.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
@@ -460,6 +483,7 @@ function expiryRow(iso) {
 async function loadHealth() {
   const list = $('health-list');
   list.innerHTML = healthRow('', 'Checking…');
+  const seq = fontSeq;
   const { status, data } = await api('/api/settings?health=1');
   if (status === 401 && data.login) return showLogin('Please unlock again.');
   if (status !== 200 || !data.health) {
@@ -467,7 +491,7 @@ async function loadHealth() {
     return;
   }
   const h = data.health;
-  if (data.settings) applySiteFont(data.settings.font);
+  if (data.settings && !savingSiteFont && seq === fontSeq) applySiteFont(data.settings.font);
   list.innerHTML =
     healthRow('tm-ok', `Connected to GitHub: ${h.repo}${h.private ? ' (private)' : ''}.`) +
     (h.private ? '' : healthRow('tm-warn', 'The repo is public, so anyone can read your label files on GitHub. Make it private in the repo settings.')) +
@@ -523,6 +547,7 @@ $('claude-connect').addEventListener('click', () => { copyMcpUrl(); });
 // --------------------------------------------------------------- editor ---
 
 function openEditor() {
+  openSeq++; // a slower Edit reply must not replace what's now open
   show('screen-editor');
   renderAll();
   refreshTaken();
@@ -624,7 +649,7 @@ document.addEventListener('click', (e) => {
     const np = makePage('New page');
     state.pages.push(np);
     state.current = np.id;
-    saveDraft();
+    edited();
     renderAll();
     $('pname').focus();
     $('pname').select();
@@ -668,7 +693,7 @@ $('delete-page').addEventListener('click', async () => {
     .filter((p) => p.id !== pg.id)
     .map((p) => ({ ...p, blocks: p.blocks.filter((b) => !(b.type === 'menu' && b.target === pg.id)) }));
   state.current = state.pages[0].id;
-  saveDraft();
+  edited();
   renderAll();
 });
 
@@ -739,8 +764,9 @@ function applySiteFont(font) {
 applySiteFont(siteFont);
 
 async function loadSiteSettings() {
+  const seq = fontSeq;
   const { status, data } = await api('/api/settings');
-  if (status === 200 && data.settings) applySiteFont(data.settings.font);
+  if (status === 200 && data.settings && !savingSiteFont && seq === fontSeq) applySiteFont(data.settings.font);
 }
 
 // The label's own choice is one switch: off follows the site default, on
@@ -887,7 +913,7 @@ $('block-list').addEventListener('change', (e) => {
   } else {
     b.target = e.target.value;
   }
-  saveDraft();
+  edited();
   renderBlocks();
   renderLive();
 });
@@ -920,7 +946,7 @@ $('block-list').addEventListener('click', async (e) => {
     b.color = '';
     renderBlocks();
   }
-  saveDraft();
+  edited();
   renderLive();
 });
 
@@ -939,7 +965,7 @@ $('add-row').addEventListener('click', (e) => {
   const others = state.pages.filter((p) => p.id !== pg.id);
   const b = newBlock(t, t === 'menu' && others[0] ? others[0].id : '');
   pg.blocks.push(b);
-  saveDraft();
+  edited();
   renderBlocks();
   renderLive();
   const card = cardFor(b);
@@ -955,8 +981,12 @@ function hasWork() {
     state.pages[0].blocks.some((b) => b.label || b.url || b.text);
 }
 
+let openSeq = 0;
+
 async function openTag(slug, onError) {
+  const seq = ++openSeq;
   const { status, data } = await api(`/api/tag/${encodeURIComponent(slug)}`);
+  if (seq !== openSeq) return false; // a later Edit tap took over
   if (status === 200) {
     state = fromData(data.slug, data.tag, data.sha);
     saveDraft();
@@ -965,7 +995,7 @@ async function openTag(slug, onError) {
     return true;
   }
   if (status === 401 && data.login) {
-    afterLogin = () => openTag(slug, () => {});
+    afterLogin = () => openTag(slug, (msg) => { showHome(); tell(msg); });
     showLogin('Please unlock again.');
     return false;
   }
@@ -985,7 +1015,77 @@ function showSaveErrors(lines) {
 
 let savedUrl = '';
 
+const putTag = (address, body) => api(`/api/tag/${encodeURIComponent(address)}`, { method: 'PUT', body: JSON.stringify(body) });
+
+// Saves under the next free name after `base` ("camera-2"…), trying the next
+// one if that name was taken in the meantime.
+async function saveAsFree(base, tag) {
+  await refreshTaken();
+  const taken = new Set([...takenSlugs(), base]);
+  let res = null;
+  let saveAt = base;
+  for (let i = 0; i < 5; i++) {
+    saveAt = nextFreeSlug(base, taken);
+    if (!saveAt) break;
+    res = await putTag(saveAt, { tag });
+    if (!(res.status === 409 && res.data.exists)) break;
+    taken.add(saveAt);
+  }
+  return { res: res || { status: 409, data: { error: 'Could not find a free address.' } }, saveAt };
+}
+
+// The whole save conversation for one label: the first try, then the
+// choices when the name is taken or the label changed elsewhere.
+async function saveFlow(s, slug, tag) {
+  const sha = s.loadedSlug === slug ? s.sha : '';
+  let res = await putTag(slug, { tag, sha });
+  if (res.status !== 409) return { res, saveAt: slug };
+
+  await refreshTaken();
+  const alt = nextFreeSlug(slug, new Set([...takenSlugs(), slug]));
+  if (res.data.exists) {
+    // The name is taken: save under the next free name, or take the name
+    // and move the label that was there to that next free name.
+    const choice = await choose(
+      `/${slug} is already in use by another label.\n\nSave as /${alt} keeps that label as it is.\nReplace puts this one at /${slug} and moves the old one to /${alt}.`,
+      [
+        { label: `Save as /${alt}`, value: 'new', style: 'outline' },
+        { label: `Replace /${slug}`, value: 'replace', style: 'danger' }
+      ]
+    );
+    if (choice === 'new') return saveAsFree(slug, tag);
+    if (choice === 'replace') return { res: await putTag(slug, { tag, replace: true }), saveAt: slug };
+    return { cancelled: 'Not saved. Pick a different tag address, or choose Save as or Replace.' };
+  }
+
+  // Changed somewhere else since it was opened (another phone, or Claude).
+  const choice = await choose(
+    `/${slug} was changed somewhere else since you opened it (on another phone, or by Claude).\n\nOverwrite replaces that version with yours.\nSave as copy keeps both, saving yours at /${alt}.`,
+    [
+      { label: 'Save as copy', value: 'copy', style: 'outline' },
+      { label: 'Overwrite', value: 'overwrite', style: 'danger' }
+    ]
+  );
+  if (choice === 'copy') return saveAsFree(slug, tag);
+  if (choice === 'overwrite') return { res: await putTag(slug, { tag, overwrite: true }), saveAt: slug };
+  return { cancelled: 'Not saved. Your changes are kept here.' };
+}
+
+let saving = false;
+
+function setSaving(on) {
+  saving = on;
+  $('save-btn').textContent = on ? 'Saving…' : 'Save tag';
+  // Freeze the editor while saving: edits made now wouldn't be in this save,
+  // and leaving could mix it up with the next label opened. (The save's own
+  // questions use the dialog, which sits outside the editor.)
+  $('screen-editor').inert = on;
+  $('save-btn').disabled = on;
+  $('back-home').disabled = on;
+}
+
 $('save-btn').addEventListener('click', async () => {
+  if (saving) return;
   $('save-errors').hidden = true;
   const slug = state.tagSlug.trim();
   const problems = [];
@@ -1006,53 +1106,38 @@ $('save-btn').addEventListener('click', async () => {
     }
   } catch (e) { /* clipboard unavailable */ }
 
-  const btn = $('save-btn');
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-  const sha = state.loadedSlug === slug ? state.sha : '';
-  const put = (address, body) => api(`/api/tag/${encodeURIComponent(address)}`, { method: 'PUT', body: JSON.stringify(body) });
-  let saveAt = slug;
-  let res = await put(slug, { tag, sha });
-  if (res.status === 409 && res.data.exists) {
-    // The name is taken: save under the next free name, or take the name
-    // and move the label that was there to that next free name.
-    await refreshTaken();
-    const alt = nextFreeSlug(slug, new Set([...takenSlugs(), slug]));
-    const choice = await choose(
-      `/${slug} is already in use by another label.\n\nSave as /${alt} keeps that label as it is.\nReplace puts this one at /${slug} and moves the old one to /${alt}.`,
-      [
-        { label: `Save as /${alt}`, value: 'new', style: 'outline' },
-        { label: `Replace /${slug}`, value: 'replace', style: 'danger' }
-      ]
-    );
-    if (choice === 'new') {
-      saveAt = alt;
-      res = await put(alt, { tag });
-    } else if (choice === 'replace') {
-      res = await put(slug, { tag, replace: true });
-    } else {
-      btn.disabled = false;
-      btn.textContent = 'Save tag';
-      return showSaveErrors(['Not saved. Pick a different tag address, or choose Save as or Replace.']);
-    }
+  // `s` is the label this save belongs to, even if `state` moves on, and
+  // `sent` is what was saved, to tell whether anything changed since.
+  const s = state;
+  const snapshot = () => JSON.stringify([s.pages, s.font]);
+  const sent = snapshot();
+  setSaving(true);
+  let outcome;
+  try {
+    outcome = await saveFlow(s, slug, tag);
+  } finally {
+    setSaving(false);
   }
-  btn.disabled = false;
-  btn.textContent = 'Save tag';
+  if (outcome.cancelled) return showSaveErrors([outcome.cancelled]);
+  const { res, saveAt } = outcome;
 
   if (res.status === 200) {
-    state.tagSlug = saveAt;
-    state.loadedSlug = saveAt;
-    state.sha = res.data.sha || '';
-    state.dirty = false;
-    writeDraft();
+    s.tagSlug = saveAt;
+    s.loadedSlug = saveAt;
+    s.sha = res.data.sha || '';
+    s.dirty = snapshot() !== sent;
     const movedTo = res.data.movedTo || '';
     labels = labels.filter((l) => l.slug !== saveAt).concat({ slug: saveAt }, movedTo ? [{ slug: movedTo }] : []);
+    if (state !== s) return; // the editor moved on to another label meanwhile
+    writeDraft();
     const finalUrl = `${location.origin}/${saveAt}`;
     showSaved(finalUrl, saveAt === slug && (await copied), movedTo ? `The label that was at /${slug} moved to /${movedTo}.` : '');
     return;
   }
+  if (state !== s) return;
   if (res.status === 401 && res.data.login) {
-    showLogin('Please unlock again, then tap Save tag. Your changes are kept.');
+    afterLogin = () => openEditor();
+    showLogin('Please unlock again. Your changes are kept: tap Save tag once you\'re back.');
     return;
   }
   if (res.data.setup) return showSaveErrors(['The site is not set up yet:', res.data.error]);
@@ -1135,6 +1220,10 @@ async function start() {
   if (status === 200) {
     loadSiteSettings();
     if (wanted && !slugProblem(wanted, { isTag: true }) && wanted !== state.loadedSlug) {
+      if (unsaved()) {
+        showHome();
+        if (!(await ask(`Open /${wanted}? Your unsaved changes to the label you were editing will be lost.`, { ok: 'Open it' }))) return;
+      }
       openEditor();
       await openTag(wanted, (msg) => showSaveErrors([msg]));
     } else if (wanted) {
@@ -1145,7 +1234,7 @@ async function start() {
     return;
   }
   if (data.setup) return setupError(data.error);
-  if (wanted) afterLogin = () => openTag(wanted, (msg) => showSaveErrors([msg]));
+  if (wanted) afterLogin = () => openTag(wanted, (msg) => { showHome(); tell(msg); });
   showLogin('');
 }
 

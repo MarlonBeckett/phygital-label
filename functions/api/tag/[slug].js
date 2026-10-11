@@ -3,18 +3,8 @@
 //                          { tag, replace: true }    →  saves it, moving the label already there to /<slug>-2
 // DELETE /api/tag/<slug>  { sha? }                  →  deletes it
 import { json } from '../../../lib/http.js';
-import { requireSession } from '../../../lib/auth.js';
-import { githubProblem } from '../../../lib/github.js';
-import { getLabel, saveLabel, replaceLabel, removeLabel, errorResponse, LabelError } from '../../../lib/labels.js';
+import { getLabel, saveLabel, replaceLabel, removeLabel, errorResponse, ownerGuard, LabelError } from '../../../lib/labels.js';
 import { LIMITS } from '../../../public/assets/label.js';
-
-async function guard(request, env) {
-  const denied = await requireSession(request, env);
-  if (denied) return denied;
-  const setup = githubProblem(env);
-  if (setup) return json({ error: setup, setup: true }, 500);
-  return null;
-}
 
 async function readBody(request) {
   const raw = await request.text();
@@ -23,7 +13,7 @@ async function readBody(request) {
 }
 
 export async function onRequestGet({ request, env, params }) {
-  const stop = await guard(request, env);
+  const stop = await ownerGuard(request, env);
   if (stop) return stop;
   try {
     const { slug, tag, sha, warnings } = await getLabel(env, String(params.slug || ''));
@@ -35,7 +25,7 @@ export async function onRequestGet({ request, env, params }) {
 }
 
 export async function onRequestPut({ request, env, params }) {
-  const stop = await guard(request, env);
+  const stop = await ownerGuard(request, env);
   if (stop) return stop;
   try {
     const body = await readBody(request);
@@ -51,7 +41,7 @@ export async function onRequestPut({ request, env, params }) {
 }
 
 export async function onRequestDelete({ request, env, params }) {
-  const stop = await guard(request, env);
+  const stop = await ownerGuard(request, env);
   if (stop) return stop;
   try {
     const body = await readBody(request);

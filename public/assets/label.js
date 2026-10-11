@@ -37,9 +37,11 @@ export function isSlug(s) {
 }
 
 // The first free address after a taken one: "camera" → "camera-2", then
-// "camera-3"… ("camera-2" itself continues as "camera-3").
+// "camera-3"… A numbered copy continues the series ("camera-2" → "camera-3")
+// only when the plain name exists too, so "route-66" becomes "route-66-2".
 export function nextFreeSlug(slug, taken) {
-  const base = slug.replace(/-\d{1,2}$/, '') || slug;
+  const stripped = slug.replace(/-\d{1,2}$/, '');
+  const base = stripped && stripped !== slug && taken.has(stripped) ? stripped : slug;
   for (let n = 2; n < 1000; n++) {
     const end = `-${n}`;
     const candidate = base.slice(0, LIMITS.slug - end.length).replace(/-+$/, '') + end;

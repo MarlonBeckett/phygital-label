@@ -23,7 +23,7 @@ export async function onRequestPost({ request, env }) {
   if (grant === 'authorization_code') {
     const code = await unseal(env, 'code', get('code'));
     if (!code) return fail('invalid_grant', 'The code is wrong or has expired. Connect again.');
-    if (get('client_id') && get('client_id') !== code.client) return fail('invalid_grant', 'The code was issued to another app.');
+    if (get('client_id') !== code.client) return fail('invalid_grant', 'The code was issued to another app (client_id is required).');
     if (get('redirect_uri') !== code.redirect) return fail('invalid_grant', 'redirect_uri does not match.');
     const verifier = get('code_verifier');
     if (!/^[A-Za-z0-9._~-]{43,128}$/.test(verifier) || (await sha256url(verifier)) !== code.challenge) {
