@@ -69,7 +69,7 @@ The phygital label maker saves your tags into your repo. To do that it needs a k
 
 | Name | Value |
 | --- | --- |
-| `ADMIN_PASSWORD` | A password for the phygital label maker. **At least 16 characters.** A few random words works well, for example `pickle-lantern-orbit-velvet`. |
+| `ADMIN_PASSWORD` | A password for the phygital label maker. Any length works, but anyone who guesses it can change your labels, so a few random words is a good choice, for example `pickle-lantern-orbit`. |
 | `GITHUB_TOKEN` | The `github_pat_…` token from step 3. |
 | `GITHUB_REPO` | Your repo's name, like `your-name/my-tags` (no `https://github.com/`). |
 
@@ -185,10 +185,10 @@ When you save, the server checks everything again, then commits `public/tags/<ad
 **Security details:**
 - The password is compared in constant time.
 - Every wrong guess waits about 2 seconds, and 5 wrong guesses lock that address out for 15 minutes. This lockout is best-effort, because the long password is what really protects you.
-- The site refuses to run with a password shorter than 16 characters.
+- Any password length is allowed (it just can't be empty). Short ones are easier to guess, and the lockout above is the only thing slowing guesses down.
 - All text is escaped before it's shown, and a strict Content-Security-Policy blocks injected scripts.
 - Only `http`/`https` links and YouTube videos are accepted.
-- Claude connects with OAuth 2.1 (PKCE required). Nothing is stored: client ids, codes and tokens are signed with a key made from `ADMIN_PASSWORD` and a counter in the settings file, which **Sign out everywhere** bumps (login cookies use the same counter). Access tokens last an hour and refresh tokens 90 days. The Allow page shows which site will receive access, and needs your password unless that phone is already unlocked.
+- Claude connects with OAuth 2.1 (PKCE required). Nothing is stored: client ids, codes and tokens are signed with a key made from `ADMIN_PASSWORD` and a counter in the settings file, which **Sign out everywhere** bumps (login cookies use the same counter). Access tokens last an hour and refresh tokens 90 days. The Allow page shows which site will receive access, and always asks for your password.
 - Everything Claude sends goes through the same checks as the label maker.
 - Logins only work on the address they were made on, and Claude's sign-in page always asks for the password.
 - **If your password ever leaks:** change `ADMIN_PASSWORD` in Cloudflare and redeploy, then make a new GitHub token and **delete the old one on GitHub**. Cloudflare keeps every past deployment running at its own address (like `abc123.project-name.pages.dev`) with the old settings, so deleting the old token is what cuts those off.
@@ -213,7 +213,7 @@ When you save, the server checks everything again, then commits `public/tags/<ad
 
 ## Troubleshooting
 
-- **"ADMIN_PASSWORD must be at least 16 characters"** or **"… is not set"**: fix it in Cloudflare (step 4), then **Retry deployment**.
+- **"ADMIN_PASSWORD is not set"**: add it in Cloudflare (step 4), then **Retry deployment**.
 - **"Your GitHub key has expired"** (or **"GitHub did not accept GITHUB_TOKEN"**): your labels and stickers keep working, but making and changing labels needs a new token. The label maker shows the steps when this happens, and warns you 14 days ahead: make a new token (step 3), replace `GITHUB_TOKEN` in Cloudflare, and retry the latest deployment.
 - **"GitHub could not find the repo"**: check `GITHUB_REPO` is exactly `your-name/my-tags`, and that the token was given access to that repo.
 - **Saved, but the page says "Nothing here"**: wait a minute for Cloudflare to finish redeploying. You can watch it on the project's **Deployments** tab.

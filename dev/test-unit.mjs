@@ -7,7 +7,7 @@ import {
 } from '../public/assets/label.js';
 import { parseGitHubDate } from '../lib/github.js';
 import { redirectProblem, isClaudeRedirect, seal, unseal } from '../lib/oauth.js';
-import { clientKey } from '../lib/auth.js';
+import { clientKey, passwordProblem } from '../lib/auth.js';
 
 let fails = 0;
 let count = 0;
@@ -82,6 +82,11 @@ ok(redirectProblem('https://user:pw@claude.ai/cb'), 'user:password rejected');
 ok(redirectProblem('https://claude.ai/cb#x'), 'fragment rejected');
 ok(isClaudeRedirect('https://claude.ai/api/mcp/auth_callback'), 'claude.ai is Claude');
 ok(!isClaudeRedirect('https://claude.ai.evil.example/cb'), 'look-alike is not Claude');
+
+// --- password rules
+eq(passwordProblem({ ADMIN_PASSWORD: 'ab' }), '', 'short passwords are allowed');
+ok(passwordProblem({ ADMIN_PASSWORD: '' }), 'empty password is refused');
+ok(passwordProblem({}), 'missing password is refused');
 
 // --- lockout keys
 const key = (ip) => clientKey({ headers: new Headers({ 'CF-Connecting-IP': ip }) });

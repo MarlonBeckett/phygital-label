@@ -110,7 +110,7 @@ function params(source) {
 
 export async function onRequestGet({ request, env }) {
   const p = params(new URL(request.url).searchParams);
-  if (passwordProblem(env)) return page(request, p, { message: 'The site is not set up yet: ADMIN_PASSWORD is missing or too short.', status: 500 });
+  if (passwordProblem(env)) return page(request, p, { message: 'The site is not set up yet: ADMIN_PASSWORD is not set.', status: 500 });
   const { client, problem } = await check(request, env, p);
   if (problem) return page(request, p, { message: problem, status: 400 });
   return page(request, p, { client });

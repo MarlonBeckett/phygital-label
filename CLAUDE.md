@@ -54,8 +54,8 @@ Needs Node.js. From the repo root:
     npx wrangler pages dev public
 
 Then open http://localhost:8788/example and http://localhost:8788/new.
-For /new, create a `.dev.vars` file (git-ignored) with ADMIN_PASSWORD (16+
-chars), GITHUB_TOKEN and GITHUB_REPO. Saving with a real token commits to
+For /new, create a `.dev.vars` file (git-ignored) with ADMIN_PASSWORD (any
+length), GITHUB_TOKEN and GITHUB_REPO. Saving with a real token commits to
 that repo, so point GITHUB_REPO at a test repo while experimenting.
 `GITHUB_API` can point the server at a local stand-in for the GitHub API.
 
